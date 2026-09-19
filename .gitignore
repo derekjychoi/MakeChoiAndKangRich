@@ -1,0 +1,19 @@
+# 자격증명 / 산출물 - 절대 커밋 금지
+secrets/
+data/
+
+# 파이썬 가상환경 / 캐시
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# OS / 에디터
+.DS_Store
+.idea/
+.vscode/
+logs/
+
+# 내부 작업 스크래치 (개발팀 오케스트레이터 산출물)
+_workspace/

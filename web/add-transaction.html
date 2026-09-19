@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>거래 입력</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="container">
+  <nav class="app-nav">
+    <a href="index.html">월간 리포트</a>
+    <a href="yearly.html">연간 리포트</a>
+    <a href="holdings.html">실시간 보유현황</a>
+    <a href="journal.html">거래 일지</a>
+    <a href="add-transaction.html" class="active">+ 거래 입력</a>
+  </nav>
+
+  <h1>➕ 매수/매도 입력</h1>
+
+  <div id="signedOut" class="card">
+    <p>구글 계정으로 로그인해주세요.</p>
+    <button id="loginBtn">Google로 로그인</button>
+  </div>
+
+  <div id="formArea" class="card" style="display:none;">
+    <div class="field full" style="margin-bottom:14px;">
+      <label>기존 종목에서 불러오기 (선택)</label>
+      <select id="existingPick">
+        <option value="">-- 직접 입력 --</option>
+      </select>
+    </div>
+
+    <div class="form-grid">
+      <div class="field">
+        <label>날짜</label>
+        <input type="date" id="f-date" />
+      </div>
+      <div class="field">
+        <label>매수/매도</label>
+        <select id="f-type">
+          <option value="매수">매수</option>
+          <option value="매도">매도</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>종목명</label>
+        <input type="text" id="f-name" placeholder="예: 삼성전자" />
+      </div>
+      <div class="field">
+        <label>종목코드</label>
+        <input type="text" id="f-code" placeholder="예: 005930 / TQQQ / BTC" />
+      </div>
+      <div class="field">
+        <label>시장</label>
+        <select id="f-market">
+          <option value="국내">국내</option>
+          <option value="해외">해외</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>섹터 / 분류</label>
+        <input type="text" id="f-sector" placeholder="예: 주식 / 금 / 코인원 / 빗썸" list="sector-options" />
+        <datalist id="sector-options">
+          <option value="주식"></option>
+          <option value="금"></option>
+          <option value="코인원"></option>
+          <option value="빗썸"></option>
+        </datalist>
+      </div>
+      <div class="field">
+        <label>증권사 / 거래소</label>
+        <input type="text" id="f-broker" placeholder="예: 키움증권" list="broker-options" />
+        <datalist id="broker-options"></datalist>
+      </div>
+      <div class="field">
+        <label>단가 (원)</label>
+        <input type="number" id="f-price" step="any" />
+      </div>
+      <div class="field">
+        <label>수량</label>
+        <input type="number" id="f-qty" step="any" />
+      </div>
+      <div class="field">
+        <label>금액 (원, 자동계산 - 수정 가능)</label>
+        <input type="number" id="f-amount" step="any" />
+      </div>
+      <div class="field">
+        <label>실현손익 (원, 매도일 때만 - 선택)</label>
+        <input type="number" id="f-realized" step="any" value="0" />
+      </div>
+    </div>
+
+    <button id="submitBtn" style="margin-top:16px;">저장</button>
+    <p id="status" style="margin-top:10px;"></p>
+  </div>
+</div>
+
+<script type="module">
+  import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    collection, addDoc, getDocs, serverTimestamp,
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { auth, db, provider } from "./firebase-init.js";
+
+  const signedOutEl = document.getElementById("signedOut");
+  const formAreaEl = document.getElementById("formArea");
+  const statusEl = document.getElementById("status");
+
+  document.getElementById("loginBtn").addEventListener("click", () => {
+    signInWithPopup(auth, provider).catch((err) => {
+      statusEl.textContent = "로그인 실패: " + err.message;
+    });
+  });
+
+  const $ = (id) => document.getElementById(id);
+  $("f-date").valueAsDate = new Date();
+
+  function recalcAmount() {
+    const price = parseFloat($("f-price").value) || 0;
+    const qty = parseFloat($("f-qty").value) || 0;
+    $("f-amount").value = price && qty ? Math.round(price * qty) : "";
+  }
+  $("f-price").addEventListener("input", recalcAmount);
+  $("f-qty").addEventListener("input", recalcAmount);
+
+  let existingHoldings = [];
+
+  async function loadExisting() {
+    const snap = await getDocs(collection(db, "transactions"));
+    const seen = new Map();
+    const brokers = new Set();
+    snap.forEach((doc) => {
+      const t = doc.data();
+      seen.set(t.code, { name: t.name, code: t.code, sector: t.sector, market: t.market || "국내" });
+      if (t.broker) brokers.add(t.broker);
+    });
+    existingHoldings = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+
+    const pick = $("existingPick");
+    existingHoldings.forEach((h, i) => {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = `${h.name} (${h.code})`;
+      pick.appendChild(opt);
+    });
+
+    const brokerList = $("broker-options");
+    brokers.forEach((b) => {
+      const opt = document.createElement("option");
+      opt.value = b;
+      brokerList.appendChild(opt);
+    });
+  }
+
+  $("existingPick").addEventListener("change", (e) => {
+    if (e.target.value === "") {
+      $("f-name").value = "";
+      $("f-code").value = "";
+      $("f-sector").value = "";
+      $("f-market").value = "국내";
+      return;
+    }
+    const h = existingHoldings[parseInt(e.target.value, 10)];
+    $("f-name").value = h.name;
+    $("f-code").value = h.code;
+    $("f-sector").value = h.sector;
+    $("f-market").value = h.market;
+  });
+
+  // <input list="..."> 는 이미 값이 들어있으면 그 값과 일치하는 옵션만 필터링해서
+  // 보여주는 브라우저 기본 동작이 있다. 포커스 시 값을 잠깐 비워 전체 목록이
+  // 보이게 하고, 선택/입력 없이 벗어나면(blur) 원래 값으로 되돌린다.
+  function fixDatalistFiltering(inputId) {
+    const input = $(inputId);
+    let savedValue = "";
+    input.addEventListener("focus", () => {
+      savedValue = input.value;
+      input.value = "";
+    });
+    input.addEventListener("blur", () => {
+      if (input.value === "") input.value = savedValue;
+    });
+  }
+  fixDatalistFiltering("f-sector");
+  fixDatalistFiltering("f-broker");
+
+  function syncRealizedField() {
+    const isSell = $("f-type").value === "매도";
+    $("f-realized").disabled = !isSell;
+    if (!isSell) $("f-realized").value = 0;
+  }
+  $("f-type").addEventListener("change", syncRealizedField);
+  syncRealizedField();
+
+  $("submitBtn").addEventListener("click", async () => {
+    const payload = {
+      date: $("f-date").value,
+      type: $("f-type").value,
+      name: $("f-name").value.trim(),
+      code: $("f-code").value.trim(),
+      market: $("f-market").value,
+      sector: $("f-sector").value.trim(),
+      broker: $("f-broker").value.trim(),
+      unit_price: parseFloat($("f-price").value) || 0,
+      quantity: parseFloat($("f-qty").value) || 0,
+      amount: parseFloat($("f-amount").value) || 0,
+      realized_pnl: parseFloat($("f-realized").value) || 0,
+    };
+
+    if (!payload.date || !payload.name || !payload.code || !payload.quantity || !payload.amount) {
+      statusEl.textContent = "날짜/종목명/코드/수량/금액은 필수입니다.";
+      return;
+    }
+
+    $("submitBtn").disabled = true;
+    statusEl.textContent = "저장 중...";
+    try {
+      await addDoc(collection(db, "transactions"), {
+        ...payload,
+        created_at: serverTimestamp(),
+        created_by: auth.currentUser.uid,
+      });
+      statusEl.textContent = `저장 완료: ${payload.date} ${payload.type} ${payload.name} ${payload.quantity}주`;
+      $("f-name").value = "";
+      $("f-code").value = "";
+      $("f-sector").value = "";
+      $("f-price").value = "";
+      $("f-qty").value = "";
+      $("f-amount").value = "";
+      $("f-realized").value = "0";
+      $("existingPick").value = "";
+      await loadExisting();
+    } catch (err) {
+      statusEl.textContent = "저장 실패: " + err.message;
+    } finally {
+      $("submitBtn").disabled = false;
+    }
+  });
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      signedOutEl.style.display = "block";
+      formAreaEl.style.display = "none";
+      return;
+    }
+    signedOutEl.style.display = "none";
+    formAreaEl.style.display = "block";
+    await loadExisting();
+  });
+</script>
+</body>
+</html>

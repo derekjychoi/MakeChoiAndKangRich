@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAllowed() {
+      return request.auth != null && request.auth.uid in [
+        "l2n8Iw73zvU8u5SVGrIz1TasQvJ3",
+        "QEMqZzsoLxcExFAB23x8NRLKjvI3"
+      ];
+    }
+
+    match /monthly_reports/{reportId} {
+      allow read: if isAllowed();
+      allow write: if false; // 서버(로컬 launchd, Admin SDK)만 씀
+    }
+
+    match /transactions/{txId} {
+      allow read: if isAllowed();
+      allow create, update, delete: if isAllowed();
+    }
+
+    match /latest_prices/{code} {
+      allow read: if isAllowed();
+      allow write: if false; // 서버(로컬 launchd, Admin SDK)만 씀
+    }
+  }
+}
