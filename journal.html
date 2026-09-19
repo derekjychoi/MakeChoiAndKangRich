@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>거래 일지</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  .toolbar { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .toolbar input { flex:1; min-width:160px; }
+  .row-actions button { padding:4px 8px; font-size:0.75rem; margin-left:4px; }
+  #editPanel { display:none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="app-nav">
+    <a href="index.html">월간 리포트</a>
+    <a href="yearly.html">연간 리포트</a>
+    <a href="holdings.html">실시간 보유현황</a>
+    <a href="journal.html" class="active">거래 일지</a>
+    <a href="add-transaction.html">+ 거래 입력</a>
+  </nav>
+
+  <h1>📒 전체 매수/매도 일지</h1>
+
+  <div id="signedOut" class="card">
+    <p>구글 계정으로 로그인해주세요.</p>
+    <button id="loginBtn">Google로 로그인</button>
+  </div>
+
+  <div id="contentArea" style="display:none;">
+    <div id="editPanel" class="card">
+      <h2>거래 수정</h2>
+      <div class="form-grid">
+        <div class="field"><label>날짜</label><input type="date" id="e-date" /></div>
+        <div class="field"><label>매수/매도</label>
+          <select id="e-type"><option value="매수">매수</option><option value="매도">매도</option></select>
+        </div>
+        <div class="field"><label>종목명</label><input type="text" id="e-name" /></div>
+        <div class="field"><label>종목코드</label><input type="text" id="e-code" /></div>
+        <div class="field"><label>단가</label><input type="number" id="e-price" step="any" /></div>
+        <div class="field"><label>수량</label><input type="number" id="e-qty" step="any" /></div>
+        <div class="field"><label>금액</label><input type="number" id="e-amount" step="any" /></div>
+        <div class="field"><label>실현손익</label><input type="number" id="e-realized" step="any" /></div>
+      </div>
+      <button id="saveEditBtn" style="margin-top:12px;">저장</button>
+      <button id="cancelEditBtn" class="secondary" style="margin-top:12px;">취소</button>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <input type="text" id="searchBox" placeholder="종목명으로 검색..." />
+        <select id="typeFilter">
+          <option value="">전체</option>
+          <option value="매수">매수만</option>
+          <option value="매도">매도만</option>
+        </select>
+      </div>
+      <p id="summaryLine" class="month-sub"></p>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>날짜</th><th>구분</th><th>종목</th><th>증권사</th>
+              <th>단가</th><th>수량</th><th>금액</th><th>실현손익</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p id="status" style="margin-top:10px;"></p>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    collection, getDocs, doc, updateDoc, deleteDoc,
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { auth, db, provider } from "./firebase-init.js";
+  import { formatKRW, escapeHtml } from "./charts.js";
+
+  const $ = (id) => document.getElementById(id);
+  const signedOutEl = $("signedOut");
+  const contentAreaEl = $("contentArea");
+  const statusEl = $("status");
+
+  $("loginBtn").addEventListener("click", () => {
+    signInWithPopup(auth, provider).catch((err) => { statusEl.textContent = "로그인 실패: " + err.message; });
+  });
+
+  let allTx = []; // [{id, ...data}]
+
+  function render() {
+    const q = $("searchBox").value.trim().toLowerCase();
+    const typeF = $("typeFilter").value;
+    let list = allTx.filter((t) =>
+      (!q || t.name.toLowerCase().includes(q)) && (!typeF || t.type === typeF)
+    );
+    list.sort((a, b) => (a.date < b.date ? 1 : -1));
+
+    $("summaryLine").textContent = `총 ${list.length}건`;
+
+    $("rows").innerHTML = list.map((t) => `
+      <tr>
+        <td>${t.date}</td>
+        <td>${t.type}</td>
+        <td>${escapeHtml(t.name)}</td>
+        <td>${escapeHtml(t.broker || "")}</td>
+        <td>${Math.round(t.unit_price).toLocaleString()}</td>
+        <td>${t.quantity}</td>
+        <td>${formatKRW(t.amount)}</td>
+        <td class="${t.realized_pnl > 0 ? "text-good" : t.realized_pnl < 0 ? "text-bad" : ""}">${t.realized_pnl ? formatKRW(t.realized_pnl) : "-"}</td>
+        <td class="row-actions">
+          <button data-id="${t.id}" class="editBtn secondary">수정</button>
+          <button data-id="${t.id}" class="deleteBtn danger">삭제</button>
+        </td>
+      </tr>
+    `).join("");
+
+    document.querySelectorAll(".editBtn").forEach((btn) => {
+      btn.addEventListener("click", () => openEdit(btn.dataset.id));
+    });
+    document.querySelectorAll(".deleteBtn").forEach((btn) => {
+      btn.addEventListener("click", () => removeTx(btn.dataset.id));
+    });
+  }
+
+  $("searchBox").addEventListener("input", render);
+  $("typeFilter").addEventListener("change", render);
+
+  function openEdit(id) {
+    const t = allTx.find((x) => x.id === id);
+    if (!t) return;
+    $("editPanel").dataset.editId = id;
+    $("e-date").value = t.date;
+    $("e-type").value = t.type;
+    $("e-name").value = t.name;
+    $("e-code").value = t.code;
+    $("e-price").value = t.unit_price;
+    $("e-qty").value = t.quantity;
+    $("e-amount").value = t.amount;
+    $("e-realized").value = t.realized_pnl || 0;
+    $("editPanel").style.display = "block";
+    $("editPanel").scrollIntoView({ behavior: "smooth" });
+  }
+
+  $("cancelEditBtn").addEventListener("click", () => { $("editPanel").style.display = "none"; });
+
+  $("saveEditBtn").addEventListener("click", async () => {
+    const id = $("editPanel").dataset.editId;
+    statusEl.textContent = "저장 중...";
+    try {
+      await updateDoc(doc(db, "transactions", id), {
+        date: $("e-date").value,
+        type: $("e-type").value,
+        name: $("e-name").value.trim(),
+        code: $("e-code").value.trim(),
+        unit_price: parseFloat($("e-price").value) || 0,
+        quantity: parseFloat($("e-qty").value) || 0,
+        amount: parseFloat($("e-amount").value) || 0,
+        realized_pnl: parseFloat($("e-realized").value) || 0,
+      });
+      $("editPanel").style.display = "none";
+      statusEl.textContent = "수정 완료";
+      await loadAll();
+    } catch (err) {
+      statusEl.textContent = "수정 실패: " + err.message;
+    }
+  });
+
+  async function removeTx(id) {
+    if (!confirm("이 거래를 삭제할까요? 되돌릴 수 없습니다.")) return;
+    statusEl.textContent = "삭제 중...";
+    try {
+      await deleteDoc(doc(db, "transactions", id));
+      statusEl.textContent = "삭제 완료";
+      await loadAll();
+    } catch (err) {
+      statusEl.textContent = "삭제 실패: " + err.message;
+    }
+  }
+
+  async function loadAll() {
+    statusEl.textContent = "불러오는 중...";
+    const snap = await getDocs(collection(db, "transactions"));
+    allTx = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    statusEl.textContent = "";
+    render();
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      signedOutEl.style.display = "block";
+      contentAreaEl.style.display = "none";
+      return;
+    }
+    signedOutEl.style.display = "none";
+    contentAreaEl.style.display = "block";
+    await loadAll();
+  });
+</script>
+</body>
+</html>

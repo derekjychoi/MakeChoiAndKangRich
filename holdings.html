@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>실시간 보유현황</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  .live-dot {
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    background: var(--success-text); margin-right:6px;
+  }
+  .stale-badge {
+    font-size: 0.68rem; color: var(--text-muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 1px 5px; margin-left: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="app-nav">
+    <a href="index.html">월간 리포트</a>
+    <a href="yearly.html">연간 리포트</a>
+    <a href="holdings.html" class="active">실시간 보유현황</a>
+    <a href="journal.html">거래 일지</a>
+    <a href="add-transaction.html">+ 거래 입력</a>
+  </nav>
+
+  <h1>📈 실시간 보유현황</h1>
+
+  <div id="signedOut" class="card">
+    <p>구글 계정으로 로그인해주세요.</p>
+    <button id="loginBtn">Google로 로그인</button>
+  </div>
+
+  <div id="contentArea" style="display:none;">
+    <p class="month-sub"><span class="live-dot"></span><span id="lastUpdated">시세 불러오는 중...</span></p>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat-tile">
+          <div class="stat-label">총 평가금액</div>
+          <div class="stat-value" id="statEval">-</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">총 투자원금</div>
+          <div class="stat-value" id="statInvested">-</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">평가손익</div>
+          <div class="stat-value" id="statProfit">-</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">보유 종목 수</div>
+          <div class="stat-value" id="statCount">-</div>
+        </div>
+      </div>
+
+      <div class="chart-block">
+        <div class="chart-title">자산군 배분</div>
+        <div id="pieArea"></div>
+      </div>
+
+      <div class="chart-block">
+        <div class="chart-title">종목별 평가손익률</div>
+        <div id="divbarArea"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>보유 종목 상세</h2>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>종목</th><th>수량</th><th>평균단가</th><th>현재가</th>
+              <th>평가금액</th><th>평가손익</th><th>수익률</th>
+            </tr>
+          </thead>
+          <tbody id="holdingsRows"></tbody>
+        </table>
+      </div>
+    </div>
+    <p id="status" class="month-sub"></p>
+  </div>
+</div>
+
+<script type="module">
+  import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { auth, db, provider } from "./firebase-init.js";
+  import { formatKRW, formatPct, escapeHtml, renderDivergingBars, renderPieChart } from "./charts.js";
+  import { computeHoldings, applyPrices } from "./holdings-calc.js";
+  import { classifyAssetClass } from "./asset-classify.js";
+
+  const $ = (id) => document.getElementById(id);
+  const signedOutEl = $("signedOut");
+  const contentAreaEl = $("contentArea");
+  const statusEl = $("status");
+
+  $("loginBtn").addEventListener("click", () => {
+    signInWithPopup(auth, provider).catch((err) => { statusEl.textContent = "로그인 실패: " + err.message; });
+  });
+
+  let transactions = [];
+  let priceMap = {};
+  let priceUpdatedAt = null;
+  let unsubTx = null;
+  let unsubPrices = null;
+
+  function recomputeAndRender() {
+    if (transactions.length === 0) return;
+    const holdings = applyPrices(computeHoldings(transactions), priceMap);
+    holdings.sort((a, b) => b.eval_total_krw - a.eval_total_krw);
+
+    const totalEval = holdings.reduce((s, h) => s + h.eval_total_krw, 0);
+    const totalInvested = holdings.reduce((s, h) => s + h.total_buy_krw, 0);
+    const totalProfit = totalEval - totalInvested;
+    const overallPct = totalInvested ? (totalProfit / totalInvested) * 100 : 0;
+
+    $("statEval").textContent = formatKRW(totalEval);
+    $("statInvested").textContent = formatKRW(totalInvested);
+    $("statProfit").textContent = `${formatKRW(totalProfit)} (${overallPct > 0 ? "+" : ""}${overallPct.toFixed(1)}%)`;
+    $("statProfit").className = "stat-value " + (totalProfit > 0 ? "good" : totalProfit < 0 ? "bad" : "");
+    $("statCount").textContent = `${holdings.length}개`;
+
+    const breakdown = {};
+    holdings.forEach((h) => {
+      const cls = classifyAssetClass(h);
+      if (!breakdown[cls]) breakdown[cls] = { eval_krw: 0, invested_krw: 0 };
+      breakdown[cls].eval_krw += h.eval_total_krw;
+      breakdown[cls].invested_krw += h.total_buy_krw;
+    });
+    $("pieArea").innerHTML = renderPieChart(breakdown);
+
+    $("divbarArea").innerHTML = renderDivergingBars(
+      holdings.map((h) => ({ label: h.name, value: h.profit_pct })),
+      "이익", "손실", formatPct
+    );
+
+    $("holdingsRows").innerHTML = holdings.map((h) => `
+      <tr>
+        <td>${escapeHtml(h.name)}${h.price_is_live ? "" : '<span class="stale-badge">실시간 미지원</span>'}</td>
+        <td>${h.quantity}</td>
+        <td>${Math.round(h.avg_buy_price_krw).toLocaleString()}</td>
+        <td>${Math.round(h.current_price_krw).toLocaleString()}</td>
+        <td>${formatKRW(h.eval_total_krw)}</td>
+        <td class="${h.profit_krw > 0 ? "text-good" : h.profit_krw < 0 ? "text-bad" : ""}">${formatKRW(h.profit_krw)}</td>
+        <td class="${h.profit_pct > 0 ? "text-good" : h.profit_pct < 0 ? "text-bad" : ""}">${formatPct(h.profit_pct)}</td>
+      </tr>
+    `).join("");
+
+    if (priceUpdatedAt) {
+      $("lastUpdated").textContent = `마지막 시세 갱신: ${priceUpdatedAt.toLocaleTimeString("ko-KR")}`;
+    }
+  }
+
+  function startListening() {
+    unsubTx = onSnapshot(collection(db, "transactions"), (snap) => {
+      transactions = snap.docs.map((d) => d.data());
+      recomputeAndRender();
+    }, (err) => { statusEl.textContent = "거래 내역 로드 실패: " + err.message; });
+
+    unsubPrices = onSnapshot(collection(db, "latest_prices"), (snap) => {
+      const map = {};
+      let latest = null;
+      snap.forEach((doc) => {
+        const d = doc.data();
+        map[doc.id] = d;
+        const ts = d.updated_at?.toDate ? d.updated_at.toDate() : null;
+        if (ts && (!latest || ts > latest)) latest = ts;
+      });
+      priceMap = map;
+      priceUpdatedAt = latest;
+      recomputeAndRender();
+    }, (err) => { statusEl.textContent = "시세 로드 실패: " + err.message; });
+  }
+
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      signedOutEl.style.display = "block";
+      contentAreaEl.style.display = "none";
+      if (unsubTx) unsubTx();
+      if (unsubPrices) unsubPrices();
+      return;
+    }
+    signedOutEl.style.display = "none";
+    contentAreaEl.style.display = "block";
+    startListening();
+  });
+</script>
+</body>
+</html>

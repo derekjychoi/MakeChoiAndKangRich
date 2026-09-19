@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>연간 리포트</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:16px; }
+  .toolbar select { width:auto; }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="app-nav">
+    <a href="index.html">월간 리포트</a>
+    <a href="yearly.html" class="active">연간 리포트</a>
+    <a href="holdings.html">실시간 보유현황</a>
+    <a href="journal.html">거래 일지</a>
+    <a href="add-transaction.html">+ 거래 입력</a>
+  </nav>
+
+  <h1>📅 연간 리포트</h1>
+
+  <div id="signedOut" class="card">
+    <p>구글 계정으로 로그인해주세요.</p>
+    <button id="loginBtn">Google로 로그인</button>
+  </div>
+
+  <div id="contentArea" style="display:none;">
+    <div class="toolbar">
+      <label style="margin:0;">연도:</label>
+      <select id="yearPicker"></select>
+    </div>
+    <div id="yearBody"></div>
+  </div>
+  <p id="status"></p>
+</div>
+
+<script type="module">
+  import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { auth, db, provider } from "./firebase-init.js";
+  import { formatKRW, renderDivergingBars } from "./charts.js";
+
+  const $ = (id) => document.getElementById(id);
+  const signedOutEl = $("signedOut");
+  const contentAreaEl = $("contentArea");
+  const statusEl = $("status");
+
+  $("loginBtn").addEventListener("click", () => {
+    signInWithPopup(auth, provider).catch((err) => { statusEl.textContent = "로그인 실패: " + err.message; });
+  });
+
+  let allReports = [];
+
+  function monthLabel(monthStr) {
+    return `${parseInt(monthStr.split("-")[1], 10)}월`;
+  }
+
+  function renderYear(year) {
+    const reports = allReports
+      .filter((r) => r.month.startsWith(year))
+      .sort((a, b) => (a.month < b.month ? -1 : 1));
+
+    if (reports.length === 0) {
+      $("yearBody").innerHTML = `<p class="empty-note">${year}년 데이터가 없습니다.</p>`;
+      return;
+    }
+
+    const totalBuy = reports.reduce((s, r) => s + (r.total_buy_krw || 0), 0);
+    const totalSell = reports.reduce((s, r) => s + (r.total_sell_krw || 0), 0);
+    const totalRealized = reports.reduce((s, r) => s + (r.realized_pnl_krw || 0), 0);
+    const totalTrades = reports.reduce((s, r) => s + (r.trade_count || 0), 0);
+    const netBuy = totalBuy - totalSell;
+
+    const netBuyItems = reports.map((r) => ({
+      label: monthLabel(r.month), value: (r.total_buy_krw || 0) - (r.total_sell_krw || 0),
+    }));
+    const realizedItems = reports.map((r) => ({
+      label: monthLabel(r.month), value: r.realized_pnl_krw || 0,
+    }));
+    const evalItems = reports.map((r) => ({
+      label: monthLabel(r.month), value: r.total_eval_krw || 0,
+    }));
+
+    const tableRows = reports.map((r) => `
+      <tr>
+        <td>${monthLabel(r.month)}</td>
+        <td>${formatKRW((r.total_buy_krw || 0) - (r.total_sell_krw || 0))}</td>
+        <td class="${r.realized_pnl_krw > 0 ? "text-good" : r.realized_pnl_krw < 0 ? "text-bad" : ""}">${formatKRW(r.realized_pnl_krw || 0)}</td>
+        <td>${r.trade_count || 0}건</td>
+        <td class="${r.overall_profit_pct > 0 ? "text-good" : r.overall_profit_pct < 0 ? "text-bad" : ""}">${formatKRW(r.total_eval_krw || 0)} (${r.overall_profit_pct > 0 ? "+" : ""}${Math.round(r.overall_profit_pct || 0)}%)</td>
+      </tr>
+    `).join("");
+
+    $("yearBody").innerHTML = `
+      <div class="card">
+        <div class="stat-grid">
+          <div class="stat-tile">
+            <div class="stat-label">연간 순매수</div>
+            <div class="stat-value">${formatKRW(netBuy)}</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">연간 실현손익</div>
+            <div class="stat-value ${totalRealized > 0 ? "good" : totalRealized < 0 ? "bad" : ""}">${formatKRW(totalRealized)}</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">총 거래 건수</div>
+            <div class="stat-value">${totalTrades}건</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-label">리포트 있는 월</div>
+            <div class="stat-value">${reports.length}개월</div>
+          </div>
+        </div>
+
+        <div class="chart-block">
+          <div class="chart-title">월별 순매수 추이</div>
+          ${renderDivergingBars(netBuyItems, "순매수", "순매도", formatKRW, false)}
+        </div>
+
+        <div class="chart-block">
+          <div class="chart-title">월별 실현손익 추이</div>
+          ${renderDivergingBars(realizedItems, "이익", "손실", formatKRW, false)}
+        </div>
+
+        <div class="chart-block">
+          <div class="chart-title">월말 총 평가금액 추이</div>
+          ${renderDivergingBars(evalItems, "평가금액", "-", formatKRW, false)}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>월별 상세</h2>
+        <p class="month-sub">평가금액은 각 리포트가 생성된 시점(그 달 말) 종가 기준입니다. 지금 당장의 보유 현황은 <a href="holdings.html">실시간 보유현황</a>에서 확인하세요.</p>
+        <table class="data-table">
+          <thead><tr><th>월</th><th>순매수</th><th>실현손익</th><th>거래건수</th><th>월말 평가금액</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  $("yearPicker").addEventListener("change", (e) => renderYear(e.target.value));
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      signedOutEl.style.display = "block";
+      contentAreaEl.style.display = "none";
+      return;
+    }
+    signedOutEl.style.display = "none";
+    contentAreaEl.style.display = "block";
+
+    statusEl.textContent = "불러오는 중...";
+    try {
+      const snap = await getDocs(collection(db, "monthly_reports"));
+      allReports = snap.docs.map((d) => d.data());
+      statusEl.textContent = "";
+
+      const years = [...new Set(allReports.map((r) => r.month.slice(0, 4)))].sort().reverse();
+      if (years.length === 0) {
+        $("yearBody").innerHTML = `<p class="empty-note">아직 데이터가 없습니다.</p>`;
+        return;
+      }
+      $("yearPicker").innerHTML = years.map((y) => `<option value="${y}">${y}년</option>`).join("");
+      renderYear(years[0]);
+    } catch (err) {
+      statusEl.textContent = "로드 실패: " + err.message;
+    }
+  });
+</script>
+</body>
+</html>
