@@ -1,26 +1,31 @@
 #!/bin/bash
-# 매월 1일 launchd가 호출 - 지난달 거래를 집계해 Firestore monthly_reports에 저장.
+# 매월 1일 실행 (로컬 launchd 또는 GitHub Actions) - 지난달 거래를 집계해
+# Firestore monthly_reports에 저장.
 set -euo pipefail
 
 export PATH="/Users/derekchoi/.local/bin:/opt/homebrew/bin:$PATH"
 
-PROJECT_DIR="/Users/derekchoi/investment-alert"
-LOG_DIR="$PROJECT_DIR/logs"
-mkdir -p "$LOG_DIR"
-TS="$(date +%Y%m%d_%H%M%S)"
-LOG_FILE="$LOG_DIR/monthly_report_${TS}.log"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-exec >> "$LOG_FILE" 2>&1
+if [ -z "${GITHUB_ACTIONS:-}" ]; then
+  LOG_DIR="$PROJECT_DIR/logs"
+  mkdir -p "$LOG_DIR"
+  TS="$(date +%Y%m%d_%H%M%S)"
+  LOG_FILE="$LOG_DIR/monthly_report_${TS}.log"
+  exec >> "$LOG_FILE" 2>&1
+fi
 
 echo "=== monthly report run: $(date) ==="
 
 cd "$PROJECT_DIR"
-source .venv/bin/activate
+[ -f .venv/bin/activate ] && source .venv/bin/activate
 
 # claude CLI 헤드리스 인증용 장기 토큰 (daily_run.sh와 동일한 이유).
-set -a
-source "$PROJECT_DIR/secrets/claude.env"
-set +a
+if [ -f "$PROJECT_DIR/secrets/claude.env" ]; then
+  set -a
+  source "$PROJECT_DIR/secrets/claude.env"
+  set +a
+fi
 
 python src/generate_monthly_report.py
 

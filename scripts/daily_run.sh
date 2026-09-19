@@ -1,5 +1,5 @@
 #!/bin/bash
-# 매일 아침 launchd가 호출하는 스크립트.
+# 매일 아침 실행되는 스크립트 (로컬 launchd 또는 GitHub Actions 둘 다에서 재사용).
 # 1) Firestore(거래 내역) + 실시간 시세 + 네이버 뉴스로 최신 스냅샷 갱신 (결정적 스크립트)
 # 2) claude -p로 스냅샷을 분석 + 추천 메시지 작성 (WebSearch만 허용된 순수 텍스트 생성 — 로컬 파일/Bash 접근 없음)
 # 3) 결과를 텔레그램으로 발송
@@ -7,26 +7,34 @@ set -euo pipefail
 
 # launchd는 PATH를 /usr/bin:/bin:/usr/sbin:/sbin 로만 채워서 실행하므로,
 # claude CLI(~/.local/bin)와 homebrew 도구들을 못 찾는다. 명시적으로 추가한다.
+# (GitHub Actions에선 존재하지 않는 경로라 그냥 무시됨)
 export PATH="/Users/derekchoi/.local/bin:/opt/homebrew/bin:$PATH"
 
-PROJECT_DIR="/Users/derekchoi/investment-alert"
-LOG_DIR="$PROJECT_DIR/logs"
-mkdir -p "$LOG_DIR"
-TS="$(date +%Y%m%d_%H%M%S)"
-LOG_FILE="$LOG_DIR/${TS}.log"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-exec >> "$LOG_FILE" 2>&1
+# GitHub Actions에서는 자체 로그 UI가 있으니 파일로 리다이렉트하지 않는다.
+if [ -z "${GITHUB_ACTIONS:-}" ]; then
+  LOG_DIR="$PROJECT_DIR/logs"
+  mkdir -p "$LOG_DIR"
+  TS="$(date +%Y%m%d_%H%M%S)"
+  LOG_FILE="$LOG_DIR/${TS}.log"
+  exec >> "$LOG_FILE" 2>&1
+fi
 
 echo "=== investment-alert daily run: $(date) ==="
 
 cd "$PROJECT_DIR"
-source .venv/bin/activate
+[ -f .venv/bin/activate ] && source .venv/bin/activate
 
-# claude CLI 헤드리스(비대화형) 인증용 장기 토큰. 로그인 키체인 세션에 의존하면
-# launchd 무인 실행 환경에서 인증에 접근하지 못해 "Not logged in"으로 조용히 실패한다.
-set -a
-source "$PROJECT_DIR/secrets/claude.env"
-set +a
+# claude CLI 헤드리스(비대화형) 인증용 장기 토큰. 로컬에선 secrets/claude.env 파일에서
+# 읽고, GitHub Actions에선 워크플로우가 CLAUDE_CODE_OAUTH_TOKEN을 이미 환경변수로 넣어주므로
+# 파일이 없으면 건너뛴다. (로그인 키체인 세션에 의존하면 무인 실행 환경에서 인증에
+# 접근하지 못해 "Not logged in"으로 조용히 실패한다.)
+if [ -f "$PROJECT_DIR/secrets/claude.env" ]; then
+  set -a
+  source "$PROJECT_DIR/secrets/claude.env"
+  set +a
+fi
 
 echo "--- 1. 포트폴리오/뉴스 스냅샷 갱신 ---"
 python src/refresh_live_prices.py

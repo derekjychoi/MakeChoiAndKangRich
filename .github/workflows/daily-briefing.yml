@@ -1,0 +1,46 @@
+name: Daily Briefing
+
+on:
+  schedule:
+    - cron: "0 23 * * *"   # 매일 08:00 KST (UTC+9)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # keepalive-workflow가 커밋할 수 있어야 함
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Install Claude Code CLI
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Write Firebase service account key
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          mkdir -p secrets
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > secrets/firebase-service-account.json
+
+      - name: Run daily briefing
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: bash scripts/daily_run.sh
+
+      - name: Keep workflow alive (60일 저장소 비활성 자동중단 방지)
+        uses: gautamkrishnar/keepalive-workflow@v1
