@@ -2,7 +2,7 @@ name: Monthly Report
 
 on:
   schedule:
-    - cron: "10 0 1 * *"   # 매월 1일 09:10 KST (UTC+9)
+    - cron: "23 0 1 * *"   # 매월 1일 09:23 KST 근처 (UTC+9) - 정각은 혼잡해서 살짝 어긋나게
   workflow_dispatch: {}
 
 permissions:
