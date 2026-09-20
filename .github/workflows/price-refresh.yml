@@ -2,7 +2,9 @@ name: Price Refresh
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # 5분마다
+    # GitHub Actions는 5분 간격 스케줄이 실제로는 몇 시간씩 밀리는 경우가 흔하다.
+    # 15분 간격이 훨씬 안정적으로 알려져 있어 이걸로 절충한다.
+    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 jobs:

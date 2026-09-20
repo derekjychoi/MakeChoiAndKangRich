@@ -19,12 +19,13 @@ Firestore가 거래 내역(`transactions`)의 **유일한 원본**이다. 예전
 ```
 Firestore (makechoiandkangrich 프로젝트)
 ├─ transactions        거래 내역 (원본, 웹 입력 폼이 직접 씀)
-├─ latest_prices       실시간(근사) 시세 캐시 (5분마다 launchd가 갱신)
+├─ latest_prices       실시간(근사) 시세 캐시 (15분마다 GitHub Actions가 갱신)
 └─ monthly_reports     월간 집계 + AI 자산배분 의견 (매월 1일 자동 생성)
 
 GitHub Actions (.github/workflows/, 무인 실행 - 로컬 Mac 의존성 없음)
 ├─ daily-briefing.yml    매일 08:00 KST - 텔레그램 브리핑
-├─ price-refresh.yml     5분마다 - latest_prices 갱신 + 직전 대비 ±5% 급등락 텔레그램 알림
+├─ price-refresh.yml     15분마다 - latest_prices 갱신 + 직전 대비 ±5% 급등락 텔레그램 알림
+│                        (5분 간격은 GitHub 스케줄이 몇 시간씩 밀리는 경우가 흔해 15분으로 절충)
 └─ monthly-report.yml    매월 1일 09:10 KST - 지난달 리포트 + AI 자산배분 의견 (실행 로그를
                          커밋해서 60일간 저장소 비활성 시 스케줄 자동중단되는 것도 방지)
 
@@ -45,7 +46,7 @@ web/ (GitHub Pages, gh-pages 브랜치, PWA로 홈 화면 추가 가능)
 | 워크플로우 | 주기 | 실제 실행 스크립트 | 필요한 저장소 시크릿 |
 |------|------|------|------|
 | `daily-briefing.yml` | 매일 08:00 KST | `scripts/daily_run.sh` | `CLAUDE_CODE_OAUTH_TOKEN`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
-| `price-refresh.yml` | 5분마다 | `python src/refresh_live_prices.py` | `FIREBASE_SERVICE_ACCOUNT_JSON` |
+| `price-refresh.yml` | 15분마다 | `python src/refresh_live_prices.py` | `FIREBASE_SERVICE_ACCOUNT_JSON`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | `monthly-report.yml` | 매월 1일 09:10 KST | `scripts/monthly_report_run.sh` | `CLAUDE_CODE_OAUTH_TOKEN`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 
 스크립트는 로컬 launchd에서도 그대로 재사용 가능하도록 짜여 있다 (`scripts/*.sh`가 실행

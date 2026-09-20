@@ -8,7 +8,7 @@ latest_prices 컬렉션에 저장한다.
 
 직전 조회 시점 대비 ALERT_THRESHOLD_PCT 이상 급등/급락하면 텔레그램으로 알린다.
 
-GitHub Actions로 5분 간격 반복 실행된다. 웹페이지는 이 컬렉션을 실시간 구독한다.
+GitHub Actions로 15분 간격 반복 실행된다. 웹페이지는 이 컬렉션을 실시간 구독한다.
 """
 from __future__ import annotations
 
