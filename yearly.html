@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>연간 리포트</title>
 <link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#2a78d6" />
 <style>
   .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:16px; }
   .toolbar select { width:auto; }
@@ -41,7 +44,12 @@
   import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
+  import "./pwa-register.js";
   import { formatKRW, renderDivergingBars } from "./charts.js";
+  import { classifyPriceSource } from "./asset-classify.js";
+
+  const TAX_DEDUCTION_KRW = 2_500_000;
+  const TAX_RATE = 0.22; // 양도소득세 20% + 지방소득세 2% (단순 추정)
 
   const $ = (id) => document.getElementById(id);
   const signedOutEl = $("signedOut");
@@ -53,9 +61,33 @@
   });
 
   let allReports = [];
+  let allTransactions = [];
 
   function monthLabel(monthStr) {
     return `${parseInt(monthStr.split("-")[1], 10)}월`;
+  }
+
+  function estimateTax(year) {
+    const sells = allTransactions.filter((t) => t.date.startsWith(year) && t.type === "매도");
+    const buckets = { yahoo_us: 0, upbit_crypto: 0 };
+    sells.forEach((t) => {
+      const src = classifyPriceSource(t);
+      if (src === "yahoo_us" || src === "upbit_crypto") {
+        buckets[src] += t.realized_pnl || 0;
+      }
+    });
+
+    const rows = [
+      { label: "해외주식(개별/ETF)", realized: buckets.yahoo_us },
+      { label: "코인", realized: buckets.upbit_crypto },
+    ].map((r) => {
+      const taxable = Math.max(0, r.realized - TAX_DEDUCTION_KRW);
+      const tax = Math.round(taxable * TAX_RATE);
+      return { ...r, taxable, tax };
+    });
+
+    const totalTax = rows.reduce((s, r) => s + r.tax, 0);
+    return { rows, totalTax };
   }
 
   function renderYear(year) {
@@ -132,6 +164,29 @@
       </div>
 
       <div class="card">
+        <h2>💰 예상 양도소득세 (단순 추정)</h2>
+        <p class="month-sub">해외주식/코인 매도 실현손익 기준, 각 자산군별 연 250만원 공제 후 22%(양도소득세+지방소득세) 적용한 단순 계산입니다. 국내 개별주식/ETF는 과세 방식이 달라 제외했습니다. 실제 신고 시 세무사 상담을 권장합니다.</p>
+        ${(() => {
+          const { rows, totalTax } = estimateTax(year);
+          return `
+            <table class="data-table">
+              <thead><tr><th>구분</th><th>실현손익</th><th>과세대상(공제후)</th><th>예상세금</th></tr></thead>
+              <tbody>
+                ${rows.map((r) => `
+                  <tr>
+                    <td>${r.label}</td>
+                    <td class="${r.realized > 0 ? "text-good" : r.realized < 0 ? "text-bad" : ""}">${formatKRW(r.realized)}</td>
+                    <td>${formatKRW(r.taxable)}</td>
+                    <td>${formatKRW(r.tax)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+            <p class="stat-value" style="margin-top:10px;">합계 예상세금: ${formatKRW(totalTax)}</p>`;
+        })()}
+      </div>
+
+      <div class="card">
         <h2>월별 상세</h2>
         <p class="month-sub">평가금액은 각 리포트가 생성된 시점(그 달 말) 종가 기준입니다. 지금 당장의 보유 현황은 <a href="holdings.html">실시간 보유현황</a>에서 확인하세요.</p>
         <table class="data-table">
@@ -154,8 +209,12 @@
 
     statusEl.textContent = "불러오는 중...";
     try {
-      const snap = await getDocs(collection(db, "monthly_reports"));
-      allReports = snap.docs.map((d) => d.data());
+      const [reportsSnap, txSnap] = await Promise.all([
+        getDocs(collection(db, "monthly_reports")),
+        getDocs(collection(db, "transactions")),
+      ]);
+      allReports = reportsSnap.docs.map((d) => d.data());
+      allTransactions = txSnap.docs.map((d) => d.data());
       statusEl.textContent = "";
 
       const years = [...new Set(allReports.map((r) => r.month.slice(0, 4)))].sort().reverse();

@@ -21,3 +21,16 @@ export function classifyAssetClass(h) {
   if (KOREAN_ETF_PREFIXES.some((p) => name.startsWith(p))) return "주식(ETF)";
   return "주식(개별)";
 }
+
+// src/asset_classify.py의 classify_price_source와 동일한 규칙 (양도소득세 추정 등
+// "해외/코인/국내" 구분이 필요한 곳에서 사용 - classifyAssetClass와는 목적이 다르다).
+export function classifyPriceSource(h) {
+  const sector = h.sector || "";
+  const code = String(h.code || "");
+
+  if (CRYPTO_SECTORS.has(sector) || CRYPTO_CODES.has(code.toUpperCase())) return "upbit_crypto";
+  if (sector === "금") return "unsupported";
+  if (/^[A-Za-z]+$/.test(code)) return "yahoo_us";
+  if (/\d/.test(code)) return "naver_kr";
+  return "unsupported";
+}

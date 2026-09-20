@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>실시간 보유현황</title>
 <link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#2a78d6" />
 <style>
   .live-dot {
     display:inline-block; width:8px; height:8px; border-radius:50%;
@@ -65,6 +68,11 @@
         <div class="chart-title">종목별 평가손익률</div>
         <div id="divbarArea"></div>
       </div>
+
+      <div class="chart-block">
+        <div class="chart-title" id="targetChartTitle">목표 비중 대비 현재</div>
+        <div id="targetArea"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -87,9 +95,10 @@
 
 <script type="module">
   import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { collection, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
-  import { formatKRW, formatPct, escapeHtml, renderDivergingBars, renderPieChart } from "./charts.js";
+  import "./pwa-register.js";
+  import { formatKRW, formatPct, formatMonth, escapeHtml, renderDivergingBars, renderPieChart } from "./charts.js";
   import { computeHoldings, applyPrices } from "./holdings-calc.js";
   import { classifyAssetClass } from "./asset-classify.js";
 
@@ -107,6 +116,23 @@
   let priceUpdatedAt = null;
   let unsubTx = null;
   let unsubPrices = null;
+  let targetAllocation = null;
+  let targetMonth = null;
+
+  async function loadTargetAllocation() {
+    const snap = await getDocs(collection(db, "monthly_reports"));
+    let best = null;
+    snap.forEach((doc) => {
+      const d = doc.data();
+      if (d.target_allocation && Object.keys(d.target_allocation).length > 0) {
+        if (!best || d.month > best.month) best = d;
+      }
+    });
+    if (best) {
+      targetAllocation = best.target_allocation;
+      targetMonth = best.month;
+    }
+  }
 
   function recomputeAndRender() {
     if (transactions.length === 0) return;
@@ -138,6 +164,21 @@
       "이익", "손실", (v) => formatPct(v, false)
     );
 
+    if (targetAllocation) {
+      $("targetChartTitle").textContent = `목표 비중 대비 현재 (${formatMonth(targetMonth)} AI 의견 기준)`;
+      const deltaItems = Object.entries(targetAllocation).map(([cls, targetPct]) => {
+        const currentPct = totalEval ? ((breakdown[cls]?.eval_krw || 0) / totalEval) * 100 : 0;
+        return { label: cls, value: currentPct - targetPct };
+      });
+      $("targetArea").innerHTML = renderDivergingBars(
+        deltaItems, "목표보다 초과", "목표보다 부족",
+        (v) => `${v.toFixed(1)}%p`
+      );
+    } else {
+      $("targetChartTitle").textContent = "목표 비중 대비 현재";
+      $("targetArea").innerHTML = `<p class="empty-note">아직 AI가 제시한 목표 비중이 없습니다 (월간 리포트에서 자동 생성됨).</p>`;
+    }
+
     $("holdingsRows").innerHTML = holdings.map((h) => `
       <tr>
         <td>${escapeHtml(h.name)}${h.price_is_live ? "" : '<span class="stale-badge">실시간 미지원</span>'}</td>
@@ -156,6 +197,8 @@
   }
 
   function startListening() {
+    loadTargetAllocation().then(recomputeAndRender);
+
     unsubTx = onSnapshot(collection(db, "transactions"), (snap) => {
       transactions = snap.docs.map((d) => d.data());
       recomputeAndRender();
