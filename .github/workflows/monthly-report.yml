@@ -1,12 +1,10 @@
 name: Monthly Report
 
 on:
-  schedule:
-    - cron: "23 0 1 * *"   # 매월 1일 09:23 KST 근처 (UTC+9) - 정각은 혼잡해서 살짝 어긋나게
+  # GitHub Actions의 schedule 트리거는 이 저장소에서 몇 시간씩 밀리는 게 실측으로
+  # 확인돼서 쓰지 않는다 (price-refresh.yml 참고). 외부 크론 서비스가 매월 1일
+  # 아침에 workflow_dispatch API를 직접 호출한다.
   workflow_dispatch: {}
-
-permissions:
-  contents: write   # 실행 로그를 커밋하기 위함 (60일 저장소 비활성 자동중단 방지 겸함)
 
 jobs:
   run:
@@ -38,20 +36,4 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: bash scripts/monthly_report_run.sh | tee /tmp/monthly_output.txt
-
-      - name: Commit run log (저장소 활동 유지 + 실행 기록, 60일 비활성 자동중단 방지)
-        if: always()
-        run: |
-          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) UTC" > .github/last_monthly_report.txt
-          cat /tmp/monthly_output.txt >> .github/last_monthly_report.txt 2>/dev/null || echo "(로그 없음 - 이전 단계가 일찍 실패)" >> .github/last_monthly_report.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/last_monthly_report.txt
-          if git diff --cached --quiet; then
-            echo "변경 없음, 커밋 스킵"
-          else
-            git commit -m "chore: monthly report run log [skip ci]"
-            git pull --rebase --autostash origin main
-            git push
-          fi
+        run: bash scripts/monthly_report_run.sh

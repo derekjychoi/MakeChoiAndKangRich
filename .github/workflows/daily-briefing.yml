@@ -1,8 +1,9 @@
 name: Daily Briefing
 
 on:
-  schedule:
-    - cron: "13 23 * * *"   # 매일 08:13 KST 근처 (UTC+9) - 정각은 혼잡해서 살짝 어긋나게
+  # GitHub Actions의 schedule 트리거는 이 저장소에서 몇 시간씩 밀리는 게 실측으로
+  # 확인돼서 쓰지 않는다 (price-refresh.yml 참고). 외부 크론 서비스가 매일 08:00 KST
+  # 근처에 workflow_dispatch API를 직접 호출한다.
   workflow_dispatch: {}
 
 jobs:
