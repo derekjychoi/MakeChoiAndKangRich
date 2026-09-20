@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>종목 상세</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#2a78d6" />
+</head>
+<body>
+<div class="container">
+  <nav class="app-nav">
+    <a href="home.html">홈</a>
+    <a href="index.html">월간 리포트</a>
+    <a href="yearly.html">연간 리포트</a>
+    <a href="holdings.html">실시간 보유현황</a>
+    <a href="journal.html">거래 일지</a>
+    <a href="add-transaction.html">+ 거래 입력</a>
+    <a href="alerts.html">알림 로그</a>
+    <a href="goal.html">목표</a>
+  </nav>
+
+  <h1 id="pageTitle">📄 종목 상세</h1>
+
+  <div id="signedOut" class="card">
+    <p>구글 계정으로 로그인해주세요.</p>
+    <button id="loginBtn">Google로 로그인</button>
+  </div>
+
+  <div id="contentArea" style="display:none;">
+    <div class="card">
+      <div class="stat-grid" id="statArea"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-title">월별 평가손익률 추이</div>
+      <div id="trendArea"></div>
+    </div>
+
+    <div class="card">
+      <h2>전체 매매 이력</h2>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead><tr><th>날짜</th><th>구분</th><th>단가</th><th>수량</th><th>금액</th><th>실현손익</th></tr></thead>
+          <tbody id="txRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <p id="status" class="month-sub"></p>
+</div>
+
+<script type="module">
+  import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    collection, query, where, getDocs, doc, getDoc,
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { auth, db, provider } from "./firebase-init.js";
+  import { formatKRW, formatPct, renderDivergingBars } from "./charts.js";
+  import { computeHoldings, applyPrices } from "./holdings-calc.js";
+  import "./pwa-register.js";
+
+  const $ = (id) => document.getElementById(id);
+  const signedOutEl = $("signedOut");
+  const contentAreaEl = $("contentArea");
+  const statusEl = $("status");
+
+  const params = new URLSearchParams(location.search);
+  const code = params.get("code") || "";
+
+  $("loginBtn").addEventListener("click", () => {
+    signInWithPopup(auth, provider).catch((err) => { statusEl.textContent = "로그인 실패: " + err.message; });
+  });
+
+  async function load() {
+    if (!code) {
+      statusEl.textContent = "종목코드가 없습니다 (예: stock-detail.html?code=005930)";
+      return;
+    }
+    statusEl.textContent = "불러오는 중...";
+    try {
+      const q = query(collection(db, "transactions"), where("code", "==", code));
+      const snap = await getDocs(q);
+      const txs = snap.docs.map((d) => d.data()).sort((a, b) => (a.date < b.date ? 1 : -1));
+
+      if (txs.length === 0) {
+        statusEl.textContent = "해당 종목코드의 거래 내역이 없습니다.";
+        return;
+      }
+      const name = txs[0].name;
+      $("pageTitle").textContent = `📄 ${name} (${code})`;
+      document.title = `${name} - 종목 상세`;
+
+      const priceDoc = await getDoc(doc(db, "latest_prices", code));
+      const priceMap = priceDoc.exists() ? { [code]: priceDoc.data() } : {};
+      const holdings = applyPrices(computeHoldings(txs), priceMap);
+      const holding = holdings[0];
+
+      if (holding) {
+        $("statArea").innerHTML = `
+          <div class="stat-tile"><div class="stat-label">보유수량</div><div class="stat-value">${holding.quantity}</div></div>
+          <div class="stat-tile"><div class="stat-label">평균단가</div><div class="stat-value">${formatKRW(holding.avg_buy_price_krw)}</div></div>
+          <div class="stat-tile"><div class="stat-label">현재가</div><div class="stat-value">${formatKRW(holding.current_price_krw)}${holding.price_is_live ? "" : " (평단가 대체)"}</div></div>
+          <div class="stat-tile"><div class="stat-label">평가손익</div><div class="stat-value ${holding.profit_krw > 0 ? "good" : holding.profit_krw < 0 ? "bad" : ""}">${formatKRW(holding.profit_krw)} (${formatPct(holding.profit_pct)})</div></div>`;
+      } else {
+        $("statArea").innerHTML = `<p class="empty-note">현재 보유하고 있지 않은 종목입니다 (전량 매도됨).</p>`;
+      }
+
+      $("txRows").innerHTML = txs.map((t) => `
+        <tr>
+          <td>${t.date}</td>
+          <td>${t.type}</td>
+          <td>${Math.round(t.unit_price).toLocaleString()}</td>
+          <td>${t.quantity}</td>
+          <td>${formatKRW(t.amount)}</td>
+          <td class="${t.realized_pnl > 0 ? "text-good" : t.realized_pnl < 0 ? "text-bad" : ""}">${t.realized_pnl ? formatKRW(t.realized_pnl) : "-"}</td>
+        </tr>
+      `).join("");
+
+      const reportsSnap = await getDocs(collection(db, "monthly_reports"));
+      const reports = reportsSnap.docs.map((d) => d.data()).sort((a, b) => (a.month < b.month ? -1 : 1));
+      const trendItems = [];
+      reports.forEach((r) => {
+        const h = (r.holdings_snapshot || []).find((x) => x.name === name);
+        if (h) trendItems.push({ label: `${r.month.slice(2, 4)}.${parseInt(r.month.split("-")[1], 10)}`, value: h.profit_pct });
+      });
+      $("trendArea").innerHTML = trendItems.length
+        ? renderDivergingBars(trendItems, "이익", "손실", (v) => formatPct(v, false), false)
+        : `<p class="empty-note">월간 리포트에 이 종목 기록이 아직 없습니다.</p>`;
+
+      statusEl.textContent = "";
+    } catch (err) {
+      statusEl.textContent = "로드 실패: " + err.message;
+    }
+  }
+
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      signedOutEl.style.display = "block";
+      contentAreaEl.style.display = "none";
+      return;
+    }
+    signedOutEl.style.display = "none";
+    contentAreaEl.style.display = "block";
+    load();
+  });
+</script>
+</body>
+</html>
