@@ -24,16 +24,17 @@ Firestore (makechoiandkangrich 프로젝트)
 
 GitHub Actions (.github/workflows/, 무인 실행 - 로컬 Mac 의존성 없음)
 ├─ daily-briefing.yml    매일 08:00 KST - 텔레그램 브리핑
-├─ price-refresh.yml     5분마다 - latest_prices 갱신 (실시간 보유현황 페이지용)
+├─ price-refresh.yml     5분마다 - latest_prices 갱신 + 직전 대비 ±5% 급등락 텔레그램 알림
 └─ monthly-report.yml    매월 1일 09:10 KST - 지난달 리포트 + AI 자산배분 의견 (실행 로그를
                          커밋해서 60일간 저장소 비활성 시 스케줄 자동중단되는 것도 방지)
 
-web/ (GitHub Pages, gh-pages 브랜치)
+web/ (GitHub Pages, gh-pages 브랜치, PWA로 홈 화면 추가 가능)
 ├─ index.html            월간 리포트 (월 선택/페이징, 자산배분 파이차트, AI 의견 + 리밸런싱 표)
-├─ yearly.html           연간 리포트 (월별 순매수/실현손익/평가금액 추이)
-├─ holdings.html         실시간 보유현황 (Firestore 실시간 구독, 코인은 브라우저에서 직접 시세 조회)
+├─ yearly.html           연간 리포트 (월별 순매수/실현손익/평가금액 추이, 양도소득세 단순 추정)
+├─ holdings.html         실시간 보유현황 (Firestore 실시간 구독, 목표비중 대비 현재 비교,
+│                        코인은 브라우저에서 직접 시세 조회)
 ├─ journal.html          전체 거래 일지 (검색/수정/삭제)
-└─ add-transaction.html  매수/매도 입력 폼
+└─ add-transaction.html  매수/매도 입력 폼 (실현손익 자동계산, 보유수량 초과 매도 경고)
 ```
 
 인증은 Firebase Authentication(Google 로그인)으로 하고, Firestore 보안 규칙
@@ -65,11 +66,11 @@ Claude Code CLI는 워크플로우 안에서 공식 설치 스크립트(`curl -f
 | `asset_classify.py` | 종목을 자산군(개별주식/ETF/금/코인)·시세 소스로 분류하는 결정적 규칙 |
 | `holdings_calc.py` | 거래 내역 → 보유 종목(평균단가법)을 계산 |
 | `historical_prices.py` | 월간 리포트용 - 특정 날짜(월말) 기준 과거 종가 조회 (네이버/야후/업비트) |
-| `refresh_live_prices.py` | 실시간 보유현황 페이지용 - 지금 이 순간 시세를 `latest_prices`에 저장 |
+| `refresh_live_prices.py` | 실시간 보유현황 페이지용 - 지금 이 순간 시세를 `latest_prices`에 저장, 직전 대비 ±5% 이상 변동 시 텔레그램 알림 |
 | `export_portfolio_snapshot.py` | 텔레그램 브리핑용 - Firestore를 `data/portfolio_snapshot.json` 형식으로 내보냄 |
 | `fetch_news.py` | 보유 종목명으로 네이버 뉴스 검색 API 조회 → JSON 저장 |
 | `generate_monthly_report.py` | 그 달 말 시점 과거 시세로 월간 리포트를 계산해 Firestore에 저장 |
-| `generate_sector_advice.py` | `claude -p`로 자산배분 의견 + 구조화된 리밸런싱 제안(JSON)을 생성 |
+| `generate_sector_advice.py` | `claude -p`로 자산배분 의견 + 구조화된 목표비중(`target_allocation`)·리밸런싱 제안(JSON)을 생성 |
 | `send_telegram.py` | 텔레그램 발송 (4096자 초과 시 자동 분할). CLI/모듈 겸용 |
 | `migrate_transactions_to_firestore.py` | 1회성 - 구글시트 스냅샷을 `transactions`로 이전 (이미 완료됨) |
 | `fetch_portfolio.py` | **레거시, 더 이상 안 씀** - 예전 구글시트 기반 수집 스크립트 |
