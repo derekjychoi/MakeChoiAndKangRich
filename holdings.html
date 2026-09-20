@@ -135,7 +135,7 @@
 
     $("divbarArea").innerHTML = renderDivergingBars(
       holdings.map((h) => ({ label: h.name, value: h.profit_pct })),
-      "이익", "손실", formatPct
+      "이익", "손실", (v) => formatPct(v, false)
     );
 
     $("holdingsRows").innerHTML = holdings.map((h) => `

@@ -8,8 +8,8 @@ export function formatKRW(v) {
   return `${sign}${Math.round(abs).toLocaleString()}원`;
 }
 
-export function formatPct(v) {
-  const sign = v > 0 ? "+" : "";
+export function formatPct(v, showSign = true) {
+  const sign = showSign && v > 0 ? "+" : "";
   return `${sign}${v.toFixed(1)}%`;
 }
 
@@ -49,7 +49,7 @@ export function renderDivergingBars(items, posLegend, negLegend, valueFormatter,
         <div class="divbar-track">
           <div class="divbar-baseline"></div>
           <div class="divbar-fill" style="${fillStyle}"></div>
-          <div class="divbar-value" style="${valueStyle}">${valueFormatter(it.value)}</div>
+          <div class="divbar-value" style="${valueStyle}">${valueFormatter(Math.abs(it.value))}</div>
         </div>
       </div>`;
   }).join("");
