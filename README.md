@@ -2,8 +2,9 @@
 
 개인 투자 포트폴리오를 관리하는 개인용 서비스. 두 부분으로 구성된다.
 
-1. **매일 아침 텔레그램 브리핑**: GitHub Actions가 매일 08:00 KST에 자동으로 보유현황을
-   갱신하고, 스케줄된 Claude Code 세션이 분석 메시지를 작성해 텔레그램으로 발송한다.
+1. **매일 아침 텔레그램 브리핑**: 외부 크론(cron-job.org)이 GitHub Actions를 깨워
+   매일 08:00 KST 근처에 자동으로 보유현황을 갱신하고, 스케줄된 Claude Code 세션이
+   분석 메시지를 작성해 텔레그램으로 발송한다.
 2. **웹 리포트 앱** (`web/`, GitHub Pages로 배포): 거래 입력, 전체 거래 일지, 실시간 보유현황,
    월간/연간 리포트를 Google 로그인 후 볼 수 있는 정적 웹앱.
 
@@ -19,15 +20,19 @@ Firestore가 거래 내역(`transactions`)의 **유일한 원본**이다. 예전
 ```
 Firestore (makechoiandkangrich 프로젝트)
 ├─ transactions        거래 내역 (원본, 웹 입력 폼이 직접 씀)
-├─ latest_prices       실시간(근사) 시세 캐시 (15분마다 GitHub Actions가 갱신)
+├─ latest_prices       실시간(근사) 시세 캐시 (외부 크론이 주기적으로 GitHub Actions를 깨워 갱신)
 └─ monthly_reports     월간 집계 + AI 자산배분 의견 (매월 1일 자동 생성)
 
-GitHub Actions (.github/workflows/, 무인 실행 - 로컬 Mac 의존성 없음)
-├─ daily-briefing.yml    매일 08:00 KST - 텔레그램 브리핑
-├─ price-refresh.yml     15분마다 - latest_prices 갱신 + 직전 대비 ±5% 급등락 텔레그램 알림
-│                        (5분 간격은 GitHub 스케줄이 몇 시간씩 밀리는 경우가 흔해 15분으로 절충)
-└─ monthly-report.yml    매월 1일 09:10 KST - 지난달 리포트 + AI 자산배분 의견 (실행 로그를
-                         커밋해서 60일간 저장소 비활성 시 스케줄 자동중단되는 것도 방지)
+cron-job.org (외부, 무료) --workflow_dispatch API 호출--> GitHub Actions
+├─ daily-briefing.yml    매일 08:00 KST 근처 - 텔레그램 브리핑
+├─ price-refresh.yml     주기적으로 - latest_prices 갱신 + 직전 대비 ±5% 급등락 텔레그램 알림
+└─ monthly-report.yml    매월 1일 아침 - 지난달 리포트 + AI 자산배분 의견
+
+GitHub Actions 자체의 `schedule` 트리거는 안 쓴다 - 이 저장소에서 몇 시간씩
+밀리는 걸 실측으로 확인함 (15분 간격으로 72분 동안 5번 뜰 기회가 있었는데
+0번 뜸). workflow_dispatch(API/버튼으로 즉시 실행)는 지연 없이 바로 도는 걸
+확인해서, 외부 크론이 정해진 시각마다 그 API를 대신 호출해주는 방식으로
+바꿨다.
 
 web/ (GitHub Pages, gh-pages 브랜치, PWA로 홈 화면 추가 가능)
 ├─ index.html            월간 리포트 (월 선택/페이징, 자산배분 파이차트, AI 의견 + 리밸런싱 표)
@@ -41,22 +46,35 @@ web/ (GitHub Pages, gh-pages 브랜치, PWA로 홈 화면 추가 가능)
 인증은 Firebase Authentication(Google 로그인)으로 하고, Firestore 보안 규칙
 (`firestore.rules`)에서 허용된 계정 UID만 읽고 쓸 수 있게 제한한다.
 
-## 자동 실행 (GitHub Actions)
+## 자동 실행 (cron-job.org → GitHub Actions workflow_dispatch)
 
-| 워크플로우 | 주기 | 실제 실행 스크립트 | 필요한 저장소 시크릿 |
+| 워크플로우 | 주기(외부 크론 기준) | 실제 실행 스크립트 | 필요한 저장소 시크릿 |
 |------|------|------|------|
-| `daily-briefing.yml` | 매일 08:00 KST | `scripts/daily_run.sh` | `CLAUDE_CODE_OAUTH_TOKEN`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
-| `price-refresh.yml` | 15분마다 | `python src/refresh_live_prices.py` | `FIREBASE_SERVICE_ACCOUNT_JSON`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
-| `monthly-report.yml` | 매월 1일 09:10 KST | `scripts/monthly_report_run.sh` | `CLAUDE_CODE_OAUTH_TOKEN`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| `daily-briefing.yml` | 매일 08:00 KST 근처 | `scripts/daily_run.sh` | `CLAUDE_CODE_OAUTH_TOKEN`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| `price-refresh.yml` | 주기적으로(cron-job.org 설정값) | `python src/refresh_live_prices.py` | `FIREBASE_SERVICE_ACCOUNT_JSON`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| `monthly-report.yml` | 매월 1일 아침 | `scripts/monthly_report_run.sh` | `CLAUDE_CODE_OAUTH_TOKEN`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+
+세 워크플로우 모두 `on: workflow_dispatch` 하나만 트리거로 갖고 있다. cron-job.org에
+등록된 크론잡이 정해진 시각마다 아래 형태로 GitHub API를 호출해서 깨운다:
+
+```
+POST https://api.github.com/repos/{owner}/{repo}/actions/workflows/{workflow-file}/dispatches
+Authorization: Bearer <이 저장소 전용, Actions:Read-and-write 권한만 있는 fine-grained PAT>
+Accept: application/vnd.github+json
+Content-Type: application/json
+
+{"ref": "main"}
+```
+
+PAT는 cron-job.org의 비공개 설정에만 저장되고, 저장소나 웹페이지 JS에는 들어가지
+않는다 (권한도 이 저장소의 Actions 읽기/쓰기로만 좁혀둠).
 
 스크립트는 로컬 launchd에서도 그대로 재사용 가능하도록 짜여 있다 (`scripts/*.sh`가 실행
 위치를 스스로 계산하고, `.venv`/`secrets/*.env` 파일은 있을 때만 사용). 다만 지금은
 GitHub Actions로만 돌리고 있고, 로컬 launchd 등록은 전부 해제된 상태다.
 
 Claude Code CLI는 워크플로우 안에서 공식 설치 스크립트(`curl -fsSL https://claude.ai/install.sh | bash`)로
-매번 새로 설치한다. `gautamkrishnar/keepalive-workflow` 같은 서드파티 GitHub Action은 저장소의
-"Actions permissions"가 제한적이면 `Repository access blocked`로 실행 자체가 막힐 수 있어서
-쓰지 않는다 - 대신 `monthly-report.yml`이 실행 로그를 직접 커밋해서 저장소 활동을 유지한다.
+매번 새로 설치한다.
 
 ## 핵심 스크립트 (`src/`)
 
