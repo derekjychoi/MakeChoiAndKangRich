@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>알림 로그</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#2a78d6" />
+</head>
+<body>
+<div class="container">
+  <nav class="app-nav">
+    <a href="home.html">홈</a>
+    <a href="index.html">월간 리포트</a>
+    <a href="yearly.html">연간 리포트</a>
+    <a href="holdings.html">실시간 보유현황</a>
+    <a href="journal.html">거래 일지</a>
+    <a href="add-transaction.html">+ 거래 입력</a>
+    <a href="alerts.html" class="active">알림 로그</a>
+    <a href="goal.html">목표</a>
+  </nav>
+
+  <h1>⚡️ 가격 급등락 알림 로그</h1>
+
+  <div id="signedOut" class="card">
+    <p>구글 계정으로 로그인해주세요.</p>
+    <button id="loginBtn">Google로 로그인</button>
+  </div>
+
+  <div id="contentArea" style="display:none;">
+    <p class="month-sub">직전 시세 조회 대비 ±5% 이상 변동 시 자동 기록됩니다 (5분 간격 조회 기준).</p>
+    <div class="card">
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead>
+            <tr><th>시각</th><th>종목</th><th>구분</th><th>이전가</th><th>이후가</th><th>변동률</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <p id="status" class="month-sub"></p>
+</div>
+
+<script type="module">
+  import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { auth, db, provider } from "./firebase-init.js";
+  import { formatKRW, escapeHtml } from "./charts.js";
+  import "./pwa-register.js";
+
+  const $ = (id) => document.getElementById(id);
+  const signedOutEl = $("signedOut");
+  const contentAreaEl = $("contentArea");
+  const statusEl = $("status");
+
+  $("loginBtn").addEventListener("click", () => {
+    signInWithPopup(auth, provider).catch((err) => { statusEl.textContent = "로그인 실패: " + err.message; });
+  });
+
+  async function loadAlerts() {
+    statusEl.textContent = "불러오는 중...";
+    try {
+      const q = query(collection(db, "price_alerts"), orderBy("created_at", "desc"), limit(200));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        statusEl.textContent = "아직 기록된 알림이 없습니다.";
+        $("rows").innerHTML = "";
+        return;
+      }
+      statusEl.textContent = "";
+      $("rows").innerHTML = snap.docs.map((doc) => {
+        const a = doc.data();
+        const ts = a.created_at?.toDate ? a.created_at.toDate() : null;
+        const isUp = a.direction === "급등";
+        return `
+          <tr>
+            <td>${ts ? ts.toLocaleString("ko-KR") : "-"}</td>
+            <td>${escapeHtml(a.name)}</td>
+            <td class="${isUp ? "text-good" : "text-bad"}">${escapeHtml(a.direction)}</td>
+            <td>${formatKRW(a.old_price_krw)}</td>
+            <td>${formatKRW(a.new_price_krw)}</td>
+            <td class="${isUp ? "text-good" : "text-bad"}">${a.change_pct > 0 ? "+" : ""}${a.change_pct.toFixed(1)}%</td>
+          </tr>`;
+      }).join("");
+    } catch (err) {
+      statusEl.textContent = "로드 실패: " + err.message;
+    }
+  }
+
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      signedOutEl.style.display = "block";
+      contentAreaEl.style.display = "none";
+      return;
+    }
+    signedOutEl.style.display = "none";
+    contentAreaEl.style.display = "block";
+    loadAlerts();
+  });
+</script>
+</body>
+</html>

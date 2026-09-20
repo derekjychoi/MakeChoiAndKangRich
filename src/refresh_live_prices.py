@@ -80,13 +80,24 @@ FETCHERS = {
 }
 
 
-def _maybe_alert(name: str, old_price: float, new_price: float) -> bool:
+def _maybe_alert(db, code: str, name: str, old_price: float, new_price: float) -> bool:
     if not old_price:
         return False
     change_pct = (new_price - old_price) / old_price * 100
     if abs(change_pct) < ALERT_THRESHOLD_PCT:
         return False
     direction = "급등" if change_pct > 0 else "급락"
+
+    db.collection("price_alerts").add({
+        "code": code,
+        "name": name,
+        "old_price_krw": old_price,
+        "new_price_krw": new_price,
+        "change_pct": change_pct,
+        "direction": direction,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    })
+
     safe_name = send_telegram.escape_html(name)
     text = (
         f"⚡️ <b>{safe_name}</b> {direction} 알림\n"
@@ -128,7 +139,7 @@ def main() -> None:
         })
         updated += 1
 
-        if prev_price and _maybe_alert(sample["name"], prev_price, price):
+        if prev_price and _maybe_alert(db, code, sample["name"], prev_price, price):
             alerted += 1
 
     print(f"시세 갱신 완료: {updated}건 성공, {skipped}건 실패/미지원, {alerted}건 급등락 알림 (총 {len(codes)}종목)")

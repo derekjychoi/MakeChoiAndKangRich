@@ -21,7 +21,9 @@ Firestore가 거래 내역(`transactions`)의 **유일한 원본**이다. 예전
 Firestore (makechoiandkangrich 프로젝트)
 ├─ transactions        거래 내역 (원본, 웹 입력 폼이 직접 씀)
 ├─ latest_prices       실시간(근사) 시세 캐시 (외부 크론이 5분마다 GitHub Actions를 깨워 갱신)
-└─ monthly_reports     월간 집계 + AI 자산배분 의견 (매월 1일 자동 생성)
+├─ monthly_reports     월간 집계 + AI 자산배분 의견(target_allocation)/리밸런싱 제안 (매월 1일 자동 생성)
+├─ price_alerts        가격 급등락 알림 기록 (refresh_live_prices.py가 씀, alerts.html에서 조회)
+└─ settings            투자 목표 등 사용자 설정 (settings/investment_goal, 클라이언트가 직접 읽고 씀)
 
 cron-job.org (외부, 무료) --workflow_dispatch API 호출--> GitHub Actions
 ├─ daily-briefing.yml    매일 08:00 KST 근처 - 텔레그램 브리핑
@@ -35,12 +37,16 @@ GitHub Actions 자체의 `schedule` 트리거는 안 쓴다 - 이 저장소에�
 바꿨다.
 
 web/ (GitHub Pages, gh-pages 브랜치, PWA로 홈 화면 추가 가능)
+├─ home.html             홈 대시보드 (총평가금액, 목표 진행률, 자산배분, 최근 알림, 바로가기)
 ├─ index.html            월간 리포트 (월 선택/페이징, 자산배분 파이차트, AI 의견 + 리밸런싱 표)
 ├─ yearly.html           연간 리포트 (월별 순매수/실현손익/평가금액 추이, 양도소득세 단순 추정)
 ├─ holdings.html         실시간 보유현황 (Firestore 실시간 구독, 목표비중 대비 현재 비교,
 │                        코인은 브라우저에서 직접 시세 조회)
 ├─ journal.html          전체 거래 일지 (검색/수정/삭제)
-└─ add-transaction.html  매수/매도 입력 폼 (실현손익 자동계산, 보유수량 초과 매도 경고)
+├─ add-transaction.html  매수/매도 입력 폼 (실현손익 자동계산, 보유수량 초과 매도 경고)
+├─ stock-detail.html     종목 상세 (?code=로 진입 - 매매 이력 + 월별 손익률 추이)
+├─ alerts.html           가격 급등락 알림 로그 (price_alerts 컬렉션)
+└─ goal.html             투자 목표 설정 + 진행률 미터
 ```
 
 인증은 Firebase Authentication(Google 로그인)으로 하고, Firestore 보안 규칙
@@ -85,7 +91,7 @@ Claude Code CLI는 워크플로우 안에서 공식 설치 스크립트(`curl -f
 | `asset_classify.py` | 종목을 자산군(개별주식/ETF/금/코인)·시세 소스로 분류하는 결정적 규칙 |
 | `holdings_calc.py` | 거래 내역 → 보유 종목(평균단가법)을 계산 |
 | `historical_prices.py` | 월간 리포트용 - 특정 날짜(월말) 기준 과거 종가 조회 (네이버/야후/업비트) |
-| `refresh_live_prices.py` | 실시간 보유현황 페이지용 - 지금 이 순간 시세를 `latest_prices`에 저장, 직전 대비 ±5% 이상 변동 시 텔레그램 알림 (네이버/야후는 비공식 엔드포인트라 요청이 잦으면 차단/제한될 수 있음 - 실패한 종목은 조용히 건너뛰고 평단가로 대체됨) |
+| `refresh_live_prices.py` | 실시간 보유현황 페이지용 - 지금 이 순간 시세를 `latest_prices`에 저장, 직전 대비 ±5% 이상 변동 시 `price_alerts`에 기록 + 텔레그램 알림 (네이버/야후는 비공식 엔드포인트라 요청이 잦으면 차단/제한될 수 있음 - 실패한 종목은 조용히 건너뛰고 평단가로 대체됨) |
 | `export_portfolio_snapshot.py` | 텔레그램 브리핑용 - Firestore를 `data/portfolio_snapshot.json` 형식으로 내보냄 |
 | `fetch_news.py` | 보유 종목명으로 네이버 뉴스 검색 API 조회 → JSON 저장 |
 | `generate_monthly_report.py` | 그 달 말 시점 과거 시세로 월간 리포트를 계산해 Firestore에 저장 |

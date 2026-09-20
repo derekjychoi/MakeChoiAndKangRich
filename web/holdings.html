@@ -22,11 +22,14 @@
 <body>
 <div class="container">
   <nav class="app-nav">
+    <a href="home.html">홈</a>
     <a href="index.html">월간 리포트</a>
     <a href="yearly.html">연간 리포트</a>
     <a href="holdings.html" class="active">실시간 보유현황</a>
     <a href="journal.html">거래 일지</a>
     <a href="add-transaction.html">+ 거래 입력</a>
+    <a href="alerts.html">알림 로그</a>
+    <a href="goal.html">목표</a>
   </nav>
 
   <h1>📈 실시간 보유현황</h1>
@@ -181,7 +184,7 @@
 
     $("holdingsRows").innerHTML = holdings.map((h) => `
       <tr>
-        <td>${escapeHtml(h.name)}${h.price_is_live ? "" : '<span class="stale-badge">실시간 미지원</span>'}</td>
+        <td><a href="stock-detail.html?code=${encodeURIComponent(h.code)}">${escapeHtml(h.name)}</a>${h.price_is_live ? "" : '<span class="stale-badge">실시간 미지원</span>'}</td>
         <td>${h.quantity}</td>
         <td>${Math.round(h.avg_buy_price_krw).toLocaleString()}</td>
         <td>${Math.round(h.current_price_krw).toLocaleString()}</td>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>홈</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#2a78d6" />
+<style>
+  .meter-track {
+    background: var(--page-plane); border: 1px solid var(--border); border-radius: 999px;
+    height: 24px; overflow: hidden; position: relative; margin: 8px 0;
+  }
+  .meter-fill { background: var(--series-pos); height: 100%; }
+  .meter-label {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 0.78rem; font-weight: 600; color: var(--text-primary);
+  }
+  .quick-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .quick-links a {
+    display: block; text-align: center; padding: 14px 8px; border-radius: 10px;
+    background: var(--page-plane); border: 1px solid var(--border);
+    color: var(--text-primary); text-decoration: none; font-size: 0.85rem;
+  }
+  .quick-links a:hover { background: var(--surface-1); }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="app-nav">
+    <a href="home.html" class="active">홈</a>
+    <a href="index.html">월간 리포트</a>
+    <a href="yearly.html">연간 리포트</a>
+    <a href="holdings.html">실시간 보유현황</a>
+    <a href="journal.html">거래 일지</a>
+    <a href="add-transaction.html">+ 거래 입력</a>
+    <a href="alerts.html">알림 로그</a>
+    <a href="goal.html">목표</a>
+  </nav>
+
+  <h1>🏠 홈</h1>
+
+  <div id="signedOut" class="card">
+    <p>구글 계정으로 로그인해주세요.</p>
+    <button id="loginBtn">Google로 로그인</button>
+  </div>
+
+  <div id="contentArea" style="display:none;">
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat-tile">
+          <div class="stat-label">총 평가금액</div>
+          <div class="stat-value" id="statEval">-</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">평가손익</div>
+          <div class="stat-value" id="statProfit">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chart-title">🎯 목표 진행률</div>
+      <div id="goalArea"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-title">자산군 배분</div>
+      <div id="pieArea"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-title">⚡️ 최근 급등락 알림</div>
+      <div id="alertArea"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-title">바로가기</div>
+      <div class="quick-links">
+        <a href="index.html">📊 월간 리포트</a>
+        <a href="yearly.html">📅 연간 리포트</a>
+        <a href="holdings.html">📈 실시간 보유현황</a>
+        <a href="journal.html">📒 거래 일지</a>
+        <a href="add-transaction.html">➕ 거래 입력</a>
+        <a href="alerts.html">⚡️ 알림 로그</a>
+        <a href="goal.html">🎯 목표</a>
+      </div>
+    </div>
+  </div>
+  <p id="status" class="month-sub"></p>
+</div>
+
+<script type="module">
+  import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    collection, query, orderBy, limit, getDocs, doc, getDoc,
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { auth, db, provider } from "./firebase-init.js";
+  import { formatKRW, escapeHtml, renderPieChart } from "./charts.js";
+  import { computeHoldings, applyPrices } from "./holdings-calc.js";
+  import { classifyAssetClass } from "./asset-classify.js";
+  import "./pwa-register.js";
+
+  const $ = (id) => document.getElementById(id);
+  const signedOutEl = $("signedOut");
+  const contentAreaEl = $("contentArea");
+  const statusEl = $("status");
+
+  $("loginBtn").addEventListener("click", () => {
+    signInWithPopup(auth, provider).catch((err) => { statusEl.textContent = "로그인 실패: " + err.message; });
+  });
+
+  async function loadHoldingsSummary() {
+    const [txSnap, priceSnap] = await Promise.all([
+      getDocs(collection(db, "transactions")),
+      getDocs(collection(db, "latest_prices")),
+    ]);
+    const transactions = txSnap.docs.map((d) => d.data());
+    const priceMap = {};
+    priceSnap.forEach((d) => { priceMap[d.id] = d.data(); });
+
+    const holdings = applyPrices(computeHoldings(transactions), priceMap);
+    const totalEval = holdings.reduce((s, h) => s + h.eval_total_krw, 0);
+    const totalInvested = holdings.reduce((s, h) => s + h.total_buy_krw, 0);
+    const totalProfit = totalEval - totalInvested;
+    const overallPct = totalInvested ? (totalProfit / totalInvested) * 100 : 0;
+
+    $("statEval").textContent = formatKRW(totalEval);
+    $("statProfit").textContent = `${formatKRW(totalProfit)} (${overallPct > 0 ? "+" : ""}${overallPct.toFixed(1)}%)`;
+    $("statProfit").className = "stat-value " + (totalProfit > 0 ? "good" : totalProfit < 0 ? "bad" : "");
+
+    const breakdown = {};
+    holdings.forEach((h) => {
+      const cls = classifyAssetClass(h);
+      if (!breakdown[cls]) breakdown[cls] = { eval_krw: 0, invested_krw: 0 };
+      breakdown[cls].eval_krw += h.eval_total_krw;
+      breakdown[cls].invested_krw += h.total_buy_krw;
+    });
+    $("pieArea").innerHTML = renderPieChart(breakdown);
+
+    return totalEval;
+  }
+
+  async function loadGoal(latestEval) {
+    const snap = await getDoc(doc(db, "settings", "investment_goal"));
+    if (!snap.exists() || !snap.data().target_amount_krw) {
+      $("goalArea").innerHTML = `<p class="empty-note">아직 목표가 없습니다. <a href="goal.html">목표 설정하러 가기</a></p>`;
+      return;
+    }
+    const goal = snap.data();
+    const pct = Math.min(100, Math.max(0, (latestEval / goal.target_amount_krw) * 100));
+    $("goalArea").innerHTML = `
+      <div class="meter-track">
+        <div class="meter-fill" style="width:${pct}%"></div>
+        <div class="meter-label">${formatKRW(latestEval)} / ${formatKRW(goal.target_amount_krw)} (${pct.toFixed(1)}%)</div>
+      </div>`;
+  }
+
+  async function loadAlerts() {
+    const q = query(collection(db, "price_alerts"), orderBy("created_at", "desc"), limit(5));
+    const snap = await getDocs(q);
+    if (snap.empty) {
+      $("alertArea").innerHTML = `<p class="empty-note">최근 알림 없음</p>`;
+      return;
+    }
+    $("alertArea").innerHTML = snap.docs.map((d) => {
+      const a = d.data();
+      const ts = a.created_at?.toDate ? a.created_at.toDate() : null;
+      const isUp = a.direction === "급등";
+      return `<div class="month-sub">${ts ? ts.toLocaleString("ko-KR") : ""} · ${escapeHtml(a.name)}
+        <span class="${isUp ? "text-good" : "text-bad"}">${escapeHtml(a.direction)} ${a.change_pct > 0 ? "+" : ""}${a.change_pct.toFixed(1)}%</span></div>`;
+    }).join("") + `<p class="month-sub" style="margin-top:8px;"><a href="alerts.html">전체 알림 로그 보기 →</a></p>`;
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      signedOutEl.style.display = "block";
+      contentAreaEl.style.display = "none";
+      return;
+    }
+    signedOutEl.style.display = "none";
+    contentAreaEl.style.display = "block";
+    statusEl.textContent = "불러오는 중...";
+    try {
+      const latestEval = await loadHoldingsSummary();
+      await Promise.all([loadGoal(latestEval), loadAlerts()]);
+      statusEl.textContent = "";
+    } catch (err) {
+      statusEl.textContent = "로드 실패: " + err.message;
+    }
+  });
+</script>
+</body>
+</html>

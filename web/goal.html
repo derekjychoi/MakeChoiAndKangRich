@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>투자 목표</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#2a78d6" />
+<style>
+  .meter-track {
+    background: var(--page-plane); border: 1px solid var(--border); border-radius: 999px;
+    height: 28px; overflow: hidden; position: relative; margin: 10px 0;
+  }
+  .meter-fill {
+    background: var(--series-pos); height: 100%; border-radius: 999px 0 0 999px;
+    transition: width 0.3s ease;
+  }
+  .meter-label {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 600; color: var(--text-primary);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="app-nav">
+    <a href="home.html">홈</a>
+    <a href="index.html">월간 리포트</a>
+    <a href="yearly.html">연간 리포트</a>
+    <a href="holdings.html">실시간 보유현황</a>
+    <a href="journal.html">거래 일지</a>
+    <a href="add-transaction.html">+ 거래 입력</a>
+    <a href="alerts.html">알림 로그</a>
+    <a href="goal.html" class="active">목표</a>
+  </nav>
+
+  <h1>🎯 투자 목표</h1>
+
+  <div id="signedOut" class="card">
+    <p>구글 계정으로 로그인해주세요.</p>
+    <button id="loginBtn">Google로 로그인</button>
+  </div>
+
+  <div id="contentArea" style="display:none;">
+    <div class="card">
+      <div id="progressArea"></div>
+      <button id="editGoalBtn" class="secondary" style="margin-top:8px;">목표 수정</button>
+    </div>
+
+    <div id="editPanel" class="card" style="display:none;">
+      <h2>목표 설정</h2>
+      <div class="form-grid">
+        <div class="field">
+          <label>목표 금액 (원)</label>
+          <input type="number" id="f-amount" step="any" min="0" />
+        </div>
+        <div class="field">
+          <label>목표 날짜</label>
+          <input type="date" id="f-date" />
+        </div>
+      </div>
+      <button id="saveGoalBtn" style="margin-top:12px;">저장</button>
+      <button id="cancelGoalBtn" class="secondary" style="margin-top:12px;">취소</button>
+    </div>
+
+    <div class="card">
+      <div class="chart-title">월말 총 평가금액 추이 (전체 기간)</div>
+      <div id="trendArea"></div>
+    </div>
+  </div>
+  <p id="status" class="month-sub"></p>
+</div>
+
+<script type="module">
+  import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { auth, db, provider } from "./firebase-init.js";
+  import { formatKRW, renderDivergingBars } from "./charts.js";
+  import "./pwa-register.js";
+
+  const $ = (id) => document.getElementById(id);
+  const signedOutEl = $("signedOut");
+  const contentAreaEl = $("contentArea");
+  const statusEl = $("status");
+
+  $("loginBtn").addEventListener("click", () => {
+    signInWithPopup(auth, provider).catch((err) => { statusEl.textContent = "로그인 실패: " + err.message; });
+  });
+
+  let currentGoal = null;
+  let latestEval = 0;
+
+  function renderProgress() {
+    const area = $("progressArea");
+    if (!currentGoal || !currentGoal.target_amount_krw) {
+      area.innerHTML = `<p class="empty-note">아직 목표가 설정되지 않았습니다. "목표 수정"에서 설정해보세요.</p>`;
+      return;
+    }
+    const target = currentGoal.target_amount_krw;
+    const pct = target ? Math.min(100, Math.max(0, (latestEval / target) * 100)) : 0;
+    const dateText = currentGoal.target_date ? ` · 목표일 ${currentGoal.target_date}` : "";
+    area.innerHTML = `
+      <div class="stat-label">목표: ${formatKRW(target)}${dateText}</div>
+      <div class="meter-track">
+        <div class="meter-fill" style="width:${pct}%"></div>
+        <div class="meter-label">${formatKRW(latestEval)} / ${formatKRW(target)} (${pct.toFixed(1)}%)</div>
+      </div>`;
+  }
+
+  async function loadGoal() {
+    const snap = await getDoc(doc(db, "settings", "investment_goal"));
+    currentGoal = snap.exists() ? snap.data() : null;
+    if (currentGoal) {
+      $("f-amount").value = currentGoal.target_amount_krw || "";
+      $("f-date").value = currentGoal.target_date || "";
+    }
+    renderProgress();
+  }
+
+  $("editGoalBtn").addEventListener("click", () => {
+    $("editPanel").style.display = "block";
+    $("editPanel").scrollIntoView({ behavior: "smooth" });
+  });
+  $("cancelGoalBtn").addEventListener("click", () => { $("editPanel").style.display = "none"; });
+
+  $("saveGoalBtn").addEventListener("click", async () => {
+    const amount = parseFloat($("f-amount").value) || 0;
+    const targetDate = $("f-date").value;
+    if (!amount) {
+      statusEl.textContent = "목표 금액을 입력해주세요.";
+      return;
+    }
+    statusEl.textContent = "저장 중...";
+    try {
+      await setDoc(doc(db, "settings", "investment_goal"), {
+        target_amount_krw: amount,
+        target_date: targetDate,
+        updated_by: auth.currentUser.uid,
+      });
+      currentGoal = { target_amount_krw: amount, target_date: targetDate };
+      renderProgress();
+      $("editPanel").style.display = "none";
+      statusEl.textContent = "저장 완료";
+    } catch (err) {
+      statusEl.textContent = "저장 실패: " + err.message;
+    }
+  });
+
+  async function loadTrend() {
+    const snap = await getDocs(collection(db, "monthly_reports"));
+    const reports = snap.docs.map((d) => d.data()).sort((a, b) => (a.month < b.month ? -1 : 1));
+    if (reports.length === 0) {
+      $("trendArea").innerHTML = `<p class="empty-note">데이터 없음</p>`;
+      return;
+    }
+    latestEval = reports[reports.length - 1].total_eval_krw || 0;
+    const evalItems = reports.map((r) => ({
+      label: `${r.month.slice(2, 4)}.${parseInt(r.month.split("-")[1], 10)}`,
+      value: r.total_eval_krw || 0,
+    }));
+    $("trendArea").innerHTML = renderDivergingBars(evalItems, "평가금액", "-", formatKRW, false);
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      signedOutEl.style.display = "block";
+      contentAreaEl.style.display = "none";
+      return;
+    }
+    signedOutEl.style.display = "none";
+    contentAreaEl.style.display = "block";
+    statusEl.textContent = "불러오는 중...";
+    await loadTrend();
+    await loadGoal();
+    statusEl.textContent = "";
+  });
+</script>
+</body>
+</html>
