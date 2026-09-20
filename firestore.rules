@@ -22,5 +22,14 @@ service cloud.firestore {
       allow read: if isAllowed();
       allow write: if false; // 서버(로컬 launchd, Admin SDK)만 씀
     }
+
+    match /price_alerts/{alertId} {
+      allow read: if isAllowed();
+      allow write: if false; // 서버(refresh_live_prices.py, Admin SDK)만 씀
+    }
+
+    match /settings/{docId} {
+      allow read, write: if isAllowed(); // 투자 목표 등 - 클라이언트에서 직접 설정
+    }
   }
 }
