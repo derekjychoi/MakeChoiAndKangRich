@@ -20,12 +20,12 @@ Firestore가 거래 내역(`transactions`)의 **유일한 원본**이다. 예전
 ```
 Firestore (makechoiandkangrich 프로젝트)
 ├─ transactions        거래 내역 (원본, 웹 입력 폼이 직접 씀)
-├─ latest_prices       실시간(근사) 시세 캐시 (외부 크론이 주기적으로 GitHub Actions를 깨워 갱신)
+├─ latest_prices       실시간(근사) 시세 캐시 (외부 크론이 5분마다 GitHub Actions를 깨워 갱신)
 └─ monthly_reports     월간 집계 + AI 자산배분 의견 (매월 1일 자동 생성)
 
 cron-job.org (외부, 무료) --workflow_dispatch API 호출--> GitHub Actions
 ├─ daily-briefing.yml    매일 08:00 KST 근처 - 텔레그램 브리핑
-├─ price-refresh.yml     주기적으로 - latest_prices 갱신 + 직전 대비 ±5% 급등락 텔레그램 알림
+├─ price-refresh.yml     5분마다 - latest_prices 갱신 + 직전 대비 ±5% 급등락 텔레그램 알림
 └─ monthly-report.yml    매월 1일 아침 - 지난달 리포트 + AI 자산배분 의견
 
 GitHub Actions 자체의 `schedule` 트리거는 안 쓴다 - 이 저장소에서 몇 시간씩
@@ -51,7 +51,7 @@ web/ (GitHub Pages, gh-pages 브랜치, PWA로 홈 화면 추가 가능)
 | 워크플로우 | 주기(외부 크론 기준) | 실제 실행 스크립트 | 필요한 저장소 시크릿 |
 |------|------|------|------|
 | `daily-briefing.yml` | 매일 08:00 KST 근처 | `scripts/daily_run.sh` | `CLAUDE_CODE_OAUTH_TOKEN`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
-| `price-refresh.yml` | 주기적으로(cron-job.org 설정값) | `python src/refresh_live_prices.py` | `FIREBASE_SERVICE_ACCOUNT_JSON`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| `price-refresh.yml` | 5분마다 | `python src/refresh_live_prices.py` | `FIREBASE_SERVICE_ACCOUNT_JSON`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | `monthly-report.yml` | 매월 1일 아침 | `scripts/monthly_report_run.sh` | `CLAUDE_CODE_OAUTH_TOKEN`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 
 세 워크플로우 모두 `on: workflow_dispatch` 하나만 트리거로 갖고 있다. cron-job.org에
@@ -85,7 +85,7 @@ Claude Code CLI는 워크플로우 안에서 공식 설치 스크립트(`curl -f
 | `asset_classify.py` | 종목을 자산군(개별주식/ETF/금/코인)·시세 소스로 분류하는 결정적 규칙 |
 | `holdings_calc.py` | 거래 내역 → 보유 종목(평균단가법)을 계산 |
 | `historical_prices.py` | 월간 리포트용 - 특정 날짜(월말) 기준 과거 종가 조회 (네이버/야후/업비트) |
-| `refresh_live_prices.py` | 실시간 보유현황 페이지용 - 지금 이 순간 시세를 `latest_prices`에 저장, 직전 대비 ±5% 이상 변동 시 텔레그램 알림 |
+| `refresh_live_prices.py` | 실시간 보유현황 페이지용 - 지금 이 순간 시세를 `latest_prices`에 저장, 직전 대비 ±5% 이상 변동 시 텔레그램 알림 (네이버/야후는 비공식 엔드포인트라 요청이 잦으면 차단/제한될 수 있음 - 실패한 종목은 조용히 건너뛰고 평단가로 대체됨) |
 | `export_portfolio_snapshot.py` | 텔레그램 브리핑용 - Firestore를 `data/portfolio_snapshot.json` 형식으로 내보냄 |
 | `fetch_news.py` | 보유 종목명으로 네이버 뉴스 검색 API 조회 → JSON 저장 |
 | `generate_monthly_report.py` | 그 달 말 시점 과거 시세로 월간 리포트를 계산해 Firestore에 저장 |
