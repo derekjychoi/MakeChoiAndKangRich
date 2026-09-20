@@ -5,9 +5,6 @@ on:
     - cron: "*/5 * * * *"   # 5분마다
   workflow_dispatch: {}
 
-permissions:
-  contents: write   # 실행 로그를 커밋하기 위함
-
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -29,18 +26,4 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > secrets/firebase-service-account.json
 
       - name: Refresh live prices
-        run: python src/refresh_live_prices.py | tee /tmp/refresh_output.txt
-
-      - name: Commit run log (저장소 활동 유지 + 실행 기록)
-        run: |
-          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) UTC - $(cat /tmp/refresh_output.txt)" > .github/last_price_refresh.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/last_price_refresh.txt
-          if git diff --cached --quiet; then
-            echo "변경 없음, 커밋 스킵"
-          else
-            git commit -m "chore: price refresh run log [skip ci]"
-            git pull --rebase --autostash origin main
-            git push
-          fi
+        run: python src/refresh_live_prices.py

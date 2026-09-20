@@ -5,9 +5,6 @@ on:
     - cron: "0 23 * * *"   # 매일 08:00 KST (UTC+9)
   workflow_dispatch: {}
 
-permissions:
-  contents: write   # keepalive-workflow가 커밋할 수 있어야 함
-
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -41,6 +38,3 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: bash scripts/daily_run.sh
-
-      - name: Keep workflow alive (60일 저장소 비활성 자동중단 방지)
-        uses: gautamkrishnar/keepalive-workflow@v1
