@@ -1,11 +1,10 @@
 name: Price Refresh
 
 on:
-  schedule:
-    # GitHub Actions는 5분 간격 스케줄이 실제로는 몇 시간씩 밀리는 경우가 흔하다.
-    # 15분 간격으로 절충하되, 정각/15분 등 "0으로 끝나는" 시각은 전세계 공개
-    # 저장소가 몰려서 특히 더 밀리므로 7분 어긋나게 잡는다.
-    - cron: "7,22,37,52 * * * *"
+  # GitHub Actions의 schedule 트리거는 이 저장소에서 몇 시간씩 밀리는 게 실측으로
+  # 확인돼서 (72분 동안 15분 간격으로 5번 뜰 기회가 있었는데 0번 뜸) 아예 쓰지 않는다.
+  # 대신 외부 크론 서비스(cron-job.org)가 GitHub API로 workflow_dispatch를 직접
+  # 호출한다 - 이 방식은 즉시 실행 이벤트로 처리돼 실측상 지연이 없었다.
   workflow_dispatch: {}
 
 jobs:
