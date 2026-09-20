@@ -186,8 +186,8 @@
       <tr>
         <td><a href="stock-detail.html?code=${encodeURIComponent(h.code)}">${escapeHtml(h.name)}</a>${h.price_is_live ? "" : '<span class="stale-badge">실시간 미지원</span>'}</td>
         <td>${h.quantity}</td>
-        <td>${Math.round(h.avg_buy_price_krw).toLocaleString()}</td>
-        <td>${Math.round(h.current_price_krw).toLocaleString()}</td>
+        <td>${Math.round(h.avg_buy_price_krw).toLocaleString()}원</td>
+        <td>${Math.round(h.current_price_krw).toLocaleString()}원</td>
         <td>${formatKRW(h.eval_total_krw)}</td>
         <td class="${h.profit_krw > 0 ? "text-good" : h.profit_krw < 0 ? "text-bad" : ""}">${formatKRW(h.profit_krw)}</td>
         <td class="${h.profit_pct > 0 ? "text-good" : h.profit_pct < 0 ? "text-bad" : ""}">${formatPct(h.profit_pct)}</td>
