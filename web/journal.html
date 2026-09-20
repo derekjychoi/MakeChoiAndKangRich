@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>거래 일지</title>
 <link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#2a78d6" />
 <style>
   .toolbar { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
   .toolbar input { flex:1; min-width:160px; }
@@ -80,6 +83,7 @@
     collection, getDocs, doc, updateDoc, deleteDoc,
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
+  import "./pwa-register.js";
   import { formatKRW, escapeHtml } from "./charts.js";
 
   const $ = (id) => document.getElementById(id);

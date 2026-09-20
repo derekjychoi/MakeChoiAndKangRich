@@ -104,11 +104,17 @@ WebSearch로 오늘 기준 세계 경제/정치 상황(금리, 인플레이션, 
 6. 형식: 순수 텍스트(HTML/마크다운 금지, 이모지와 줄바꿈만 사용). 총 1400자 이내로 간결하게.
 7. 마지막 줄에 "※ 투자 판단은 참고용이며 최종 책임은 본인에게 있습니다." 를 반드시 포함하라.
 8. 위 본문이 끝나면, 반드시 새 줄에 구분선 "===REBALANCE_JSON===" 을 쓰고, 그다음 줄부터
-   5번의 리밸런싱 제안을 JSON 배열로 다시 한번 구조화해서 출력하라 (자연어 설명 없이
-   JSON 배열만). 각 항목은 정확히 이 키를 가져야 한다:
-   {{"action": "매도" 또는 "매수", "name": "종목명 또는 자산군명(신규 자산군 매수 제안이면 자산군명 사용, 예: '금')", "amount_krw": 정수(대략적인 원화 금액, 모르면 null), "reason": "한 줄 이유"}}
-   제안이 없으면 빈 배열 []을 출력하라. 이 JSON 부분은 위 6번의 글자수 제한과 무관하게
-   필요한 만큼 써도 된다.
+   4번의 목표 비중과 5번의 리밸런싱 제안을 아래 형식의 JSON **객체 하나**로 다시 한번
+   구조화해서 출력하라 (자연어 설명 없이 JSON만):
+   {{
+     "target_allocation": {{"주식(개별)": 숫자, "주식(ETF)": 숫자, "금": 숫자, "코인": 숫자}},
+     "rebalancing_actions": [
+       {{"action": "매도" 또는 "매수", "name": "종목명 또는 자산군명(신규 자산군 매수 제안이면 자산군명 사용, 예: '금')", "amount_krw": 정수(대략적인 원화 금액, 모르면 null), "reason": "한 줄 이유"}}
+     ]
+   }}
+   target_allocation의 네 값은 반드시 4번에서 제시한 숫자와 일치해야 하고 합계가 100이어야
+   한다. rebalancing_actions에 제안이 없으면 빈 배열 []. 이 JSON 부분은 위 6번의 글자수
+   제한과 무관하게 필요한 만큼 써도 된다.
 9. 출력은 본문 + 구분선 + JSON, 이 세 부분 외에 서두 설명이나 후기를 절대 넣지 마라.
 """
 
@@ -149,38 +155,45 @@ def main() -> None:
     if result.returncode != 0 or not raw:
         raise SystemExit(f"claude -p 실패 (exit={result.returncode}): {result.stderr[:500]}")
 
-    advice, rebalancing_actions = _split_advice_and_json(raw)
+    advice, target_allocation, rebalancing_actions = _split_advice_and_json(raw)
 
     doc_ref.set({
         "sector_allocation_advice": advice,
+        "target_allocation": target_allocation,
         "rebalancing_actions": rebalancing_actions,
     }, merge=True)
     print(
         f"저장 완료: monthly_reports/{month}.sector_allocation_advice ({len(advice)}자), "
-        f"rebalancing_actions {len(rebalancing_actions)}건"
+        f"target_allocation={target_allocation}, rebalancing_actions {len(rebalancing_actions)}건"
     )
 
 
-def _split_advice_and_json(raw: str) -> tuple[str, list[dict]]:
+def _split_advice_and_json(raw: str) -> tuple[str, dict, list[dict]]:
     marker = "===REBALANCE_JSON==="
     if marker not in raw:
-        return raw, []
+        return raw, {}, []
 
     narrative, _, json_part = raw.partition(marker)
     narrative = narrative.strip()
 
-    start = json_part.find("[")
-    end = json_part.rfind("]")
+    start = json_part.find("{")
+    end = json_part.rfind("}")
     if start == -1 or end == -1 or end < start:
-        return narrative, []
+        return narrative, {}, []
 
     try:
-        actions = json.loads(json_part[start:end + 1])
-        if not isinstance(actions, list):
-            return narrative, []
-        return narrative, actions
+        parsed = json.loads(json_part[start:end + 1])
+        if not isinstance(parsed, dict):
+            return narrative, {}, []
+        target_allocation = parsed.get("target_allocation", {})
+        rebalancing_actions = parsed.get("rebalancing_actions", [])
+        if not isinstance(target_allocation, dict):
+            target_allocation = {}
+        if not isinstance(rebalancing_actions, list):
+            rebalancing_actions = []
+        return narrative, target_allocation, rebalancing_actions
     except json.JSONDecodeError:
-        return narrative, []
+        return narrative, {}, []
 
 
 if __name__ == "__main__":

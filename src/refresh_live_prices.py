@@ -6,15 +6,20 @@ latest_prices 컬렉션에 저장한다.
 - 코인 (BTC/ETH/XRP 등): 업비트 공개 시세 API
 - 금 현물 등 미지원 자산: 건너뜀 (holdings_calc가 평단가로 대체 처리)
 
-launchd로 몇 분 간격 반복 실행한다. 웹페이지는 이 컬렉션을 실시간 구독한다.
+직전 조회 시점 대비 ALERT_THRESHOLD_PCT 이상 급등/급락하면 텔레그램으로 알린다.
+
+GitHub Actions로 5분 간격 반복 실행된다. 웹페이지는 이 컬렉션을 실시간 구독한다.
 """
 from __future__ import annotations
 
 import requests
 from firebase_admin import firestore
 
+import send_telegram
 from asset_classify import classify_price_source
 from firestore_client import get_db
+
+ALERT_THRESHOLD_PCT = 5.0
 
 NAVER_URL = "https://polling.finance.naver.com/api/realtime/domestic/stock/{code}"
 YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
@@ -75,6 +80,25 @@ FETCHERS = {
 }
 
 
+def _maybe_alert(name: str, old_price: float, new_price: float) -> bool:
+    if not old_price:
+        return False
+    change_pct = (new_price - old_price) / old_price * 100
+    if abs(change_pct) < ALERT_THRESHOLD_PCT:
+        return False
+    direction = "급등" if change_pct > 0 else "급락"
+    safe_name = send_telegram.escape_html(name)
+    text = (
+        f"⚡️ <b>{safe_name}</b> {direction} 알림\n"
+        f"{old_price:,.0f}원 → {new_price:,.0f}원 ({change_pct:+.1f}%)"
+    )
+    try:
+        send_telegram.send_message(text)
+    except Exception as e:
+        print(f"!!! 알림 발송 실패 ({name}): {e}")
+    return True
+
+
 def main() -> None:
     db = get_db()
     codes: dict[str, dict] = {}
@@ -82,7 +106,7 @@ def main() -> None:
         t = doc.to_dict()
         codes.setdefault(t["code"], t)
 
-    updated, skipped = 0, 0
+    updated, skipped, alerted = 0, 0, 0
     for code, sample in codes.items():
         source = classify_price_source(sample)
         fetcher = FETCHERS.get(source)
@@ -91,6 +115,9 @@ def main() -> None:
         if price is None:
             skipped += 1
             continue
+
+        prev_doc = db.collection("latest_prices").document(code).get()
+        prev_price = prev_doc.to_dict().get("price_krw") if prev_doc.exists else None
 
         db.collection("latest_prices").document(code).set({
             "code": code,
@@ -101,7 +128,10 @@ def main() -> None:
         })
         updated += 1
 
-    print(f"시세 갱신 완료: {updated}건 성공, {skipped}건 실패/미지원 (총 {len(codes)}종목)")
+        if prev_price and _maybe_alert(sample["name"], prev_price, price):
+            alerted += 1
+
+    print(f"시세 갱신 완료: {updated}건 성공, {skipped}건 실패/미지원, {alerted}건 급등락 알림 (총 {len(codes)}종목)")
 
 
 if __name__ == "__main__":

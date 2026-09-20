@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>거래 입력</title>
 <link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#2a78d6" />
 </head>
 <body>
 <div class="container">
@@ -86,10 +89,13 @@
         <input type="number" id="f-amount" step="any" />
       </div>
       <div class="field">
-        <label>실현손익 (원, 매도일 때만 - 선택)</label>
+        <label>실현손익 (원, 매도일 때만 - 자동계산, 수정 가능)</label>
         <input type="number" id="f-realized" step="any" value="0" />
       </div>
     </div>
+
+    <p id="holdingInfo" class="month-sub" style="display:none;"></p>
+    <p id="sellWarning" class="text-bad" style="display:none; font-size:0.85rem;"></p>
 
     <button id="submitBtn" style="margin-top:16px;">저장</button>
     <p id="status" style="margin-top:10px;"></p>
@@ -102,6 +108,9 @@
     collection, addDoc, getDocs, serverTimestamp,
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
+  import "./pwa-register.js";
+  import { computeHoldings } from "./holdings-calc.js";
+  import { formatKRW } from "./charts.js";
 
   const signedOutEl = document.getElementById("signedOut");
   const formAreaEl = document.getElementById("formArea");
@@ -121,21 +130,24 @@
     const qty = parseFloat($("f-qty").value) || 0;
     $("f-amount").value = price && qty ? Math.round(price * qty) : "";
   }
-  $("f-price").addEventListener("input", recalcAmount);
-  $("f-qty").addEventListener("input", recalcAmount);
 
   let existingHoldings = [];
+  let holdingsByCode = new Map(); // code -> {quantity, avg_buy_price_krw}
 
   async function loadExisting() {
     const snap = await getDocs(collection(db, "transactions"));
     const seen = new Map();
     const brokers = new Set();
+    const allTx = [];
     snap.forEach((doc) => {
       const t = doc.data();
+      allTx.push(t);
       seen.set(t.code, { name: t.name, code: t.code, sector: t.sector, market: t.market || "국내" });
       if (t.broker) brokers.add(t.broker);
     });
     existingHoldings = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+
+    holdingsByCode = new Map(computeHoldings(allTx).map((h) => [h.code, h]));
 
     const pick = $("existingPick");
     existingHoldings.forEach((h, i) => {
@@ -166,6 +178,7 @@
     $("f-code").value = h.code;
     $("f-sector").value = h.sector;
     $("f-market").value = h.market;
+    syncSellHelpers();
   });
 
   // <input list="..."> 는 이미 값이 들어있으면 그 값과 일치하는 옵션만 필터링해서
@@ -185,15 +198,70 @@
   fixDatalistFiltering("f-sector");
   fixDatalistFiltering("f-broker");
 
-  function syncRealizedField() {
+  function currentSellExceedsHolding() {
+    const isSell = $("f-type").value === "매도";
+    if (!isSell) return false;
+    const code = $("f-code").value.trim();
+    const qty = parseFloat($("f-qty").value) || 0;
+    const holding = holdingsByCode.get(code);
+    const held = holding ? holding.quantity : 0;
+    return qty > held + 1e-9;
+  }
+
+  function syncSellHelpers() {
+    recalcAmount();
+
     const isSell = $("f-type").value === "매도";
     $("f-realized").disabled = !isSell;
-    if (!isSell) $("f-realized").value = 0;
+
+    const code = $("f-code").value.trim();
+    const holding = holdingsByCode.get(code);
+    const holdingInfoEl = $("holdingInfo");
+    const warnEl = $("sellWarning");
+
+    if (holding) {
+      holdingInfoEl.style.display = "block";
+      holdingInfoEl.textContent = `현재 보유수량: ${holding.quantity} · 평균단가: ${formatKRW(holding.avg_buy_price_krw)}`;
+    } else if (code) {
+      holdingInfoEl.style.display = "block";
+      holdingInfoEl.textContent = "현재 보유 내역 없음 (신규 종목)";
+    } else {
+      holdingInfoEl.style.display = "none";
+    }
+
+    if (!isSell) {
+      $("f-realized").value = 0;
+      warnEl.style.display = "none";
+      return;
+    }
+
+    const price = parseFloat($("f-price").value) || 0;
+    const qty = parseFloat($("f-qty").value) || 0;
+    if (holding && price && qty) {
+      const suggested = Math.round((price - holding.avg_buy_price_krw) * qty);
+      $("f-realized").value = suggested;
+    }
+
+    if (currentSellExceedsHolding()) {
+      const held = holding ? holding.quantity : 0;
+      warnEl.style.display = "block";
+      warnEl.textContent = `⚠️ 입력한 매도수량(${qty})이 현재 보유수량(${held})보다 많습니다.`;
+    } else {
+      warnEl.style.display = "none";
+    }
   }
-  $("f-type").addEventListener("change", syncRealizedField);
-  syncRealizedField();
+  $("f-type").addEventListener("change", syncSellHelpers);
+  $("f-code").addEventListener("input", syncSellHelpers);
+  $("f-price").addEventListener("input", syncSellHelpers);
+  $("f-qty").addEventListener("input", syncSellHelpers);
+  syncSellHelpers();
 
   $("submitBtn").addEventListener("click", async () => {
+    const isSell = $("f-type").value === "매도";
+    // 매도 거래는 quantity/amount를 음수로 저장한다 (매수=양수 컨벤션, holdings_calc.js가 이를 전제로 계산함).
+    const rawQty = Math.abs(parseFloat($("f-qty").value) || 0);
+    const rawAmount = Math.abs(parseFloat($("f-amount").value) || 0);
+
     const payload = {
       date: $("f-date").value,
       type: $("f-type").value,
@@ -203,14 +271,19 @@
       sector: $("f-sector").value.trim(),
       broker: $("f-broker").value.trim(),
       unit_price: parseFloat($("f-price").value) || 0,
-      quantity: parseFloat($("f-qty").value) || 0,
-      amount: parseFloat($("f-amount").value) || 0,
+      quantity: isSell ? -rawQty : rawQty,
+      amount: isSell ? -rawAmount : rawAmount,
       realized_pnl: parseFloat($("f-realized").value) || 0,
     };
 
-    if (!payload.date || !payload.name || !payload.code || !payload.quantity || !payload.amount) {
+    if (!payload.date || !payload.name || !payload.code || !rawQty || !rawAmount) {
       statusEl.textContent = "날짜/종목명/코드/수량/금액은 필수입니다.";
       return;
+    }
+
+    if (currentSellExceedsHolding()) {
+      const proceed = confirm("입력한 매도수량이 현재 보유수량보다 많습니다. 그래도 저장할까요?");
+      if (!proceed) return;
     }
 
     $("submitBtn").disabled = true;
@@ -221,7 +294,7 @@
         created_at: serverTimestamp(),
         created_by: auth.currentUser.uid,
       });
-      statusEl.textContent = `저장 완료: ${payload.date} ${payload.type} ${payload.name} ${payload.quantity}주`;
+      statusEl.textContent = `저장 완료: ${payload.date} ${payload.type} ${payload.name} ${rawQty}주`;
       $("f-name").value = "";
       $("f-code").value = "";
       $("f-sector").value = "";
@@ -231,6 +304,7 @@
       $("f-realized").value = "0";
       $("existingPick").value = "";
       await loadExisting();
+      syncSellHelpers();
     } catch (err) {
       statusEl.textContent = "저장 실패: " + err.message;
     } finally {
@@ -247,6 +321,7 @@
     signedOutEl.style.display = "none";
     formAreaEl.style.display = "block";
     await loadExisting();
+    syncSellHelpers();
   });
 </script>
 </body>

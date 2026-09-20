@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>투자 월간 리포트</title>
 <link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#2a78d6" />
 <style>
   .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
   .toolbar select { width:auto; }
@@ -60,6 +63,7 @@
   import { signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
+  import "./pwa-register.js";
   import { formatKRW, formatPct, formatMonth, escapeHtml, renderDivergingBars, renderPieChart } from "./charts.js";
 
   const $ = (id) => document.getElementById(id);
