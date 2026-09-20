@@ -18,13 +18,6 @@
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     font-size: 0.78rem; font-weight: 600; color: var(--text-primary);
   }
-  .quick-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
-  .quick-links a {
-    display: block; text-align: center; padding: 14px 8px; border-radius: 10px;
-    background: var(--page-plane); border: 1px solid var(--border);
-    color: var(--text-primary); text-decoration: none; font-size: 0.85rem;
-  }
-  .quick-links a:hover { background: var(--surface-1); }
 </style>
 </head>
 <body>
@@ -74,19 +67,6 @@
     <div class="card">
       <div class="chart-title">⚡️ 최근 급등락 알림</div>
       <div id="alertArea"></div>
-    </div>
-
-    <div class="card">
-      <div class="chart-title">바로가기</div>
-      <div class="quick-links">
-        <a href="index.html">📊 월간 리포트</a>
-        <a href="yearly.html">📅 연간 리포트</a>
-        <a href="holdings.html">📈 실시간 보유현황</a>
-        <a href="journal.html">📒 거래 일지</a>
-        <a href="add-transaction.html">➕ 거래 입력</a>
-        <a href="alerts.html">⚡️ 알림 로그</a>
-        <a href="goal.html">🎯 목표</a>
-      </div>
     </div>
   </div>
   <p id="status" class="month-sub"></p>
