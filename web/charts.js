@@ -11,6 +11,13 @@ export function formatPct(v, showSign = true) {
   return `${sign}${v.toFixed(1)}%`;
 }
 
+// renderDivergingBars의 valueFormatter로 바로 쓰는 용도: "금액 (+12.3%)" 형식.
+// item에 pct 필드(투자원금 대비 손익률)가 있어야 한다.
+export function formatKRWWithPct(v, item) {
+  const pct = item && typeof item.pct === "number" ? ` (${formatPct(item.pct)})` : "";
+  return `${formatKRW(v)}${pct}`;
+}
+
 export function formatMonth(id) {
   const [y, m] = id.split("-");
   return `${y}년 ${parseInt(m, 10)}월`;
@@ -22,7 +29,8 @@ export function escapeHtml(s) {
   }[c]));
 }
 
-// items: [{label, value}]. sortByValue=false면 입력 순서를 그대로 유지한다 (예: 시간순 추이).
+// items: [{label, value, ...}]. sortByValue=false면 입력 순서를 그대로 유지한다 (예: 시간순 추이).
+// valueFormatter(absValue, item) - item 전체가 두번째 인자로 넘어가서 value 외의 필드(예: 퍼센트)도 라벨에 쓸 수 있다.
 export function renderDivergingBars(items, posLegend, negLegend, valueFormatter, sortByValue = true) {
   if (items.length === 0) {
     return `<p class="empty-note">데이터 없음</p>`;
@@ -47,7 +55,7 @@ export function renderDivergingBars(items, posLegend, negLegend, valueFormatter,
         <div class="divbar-track">
           <div class="divbar-baseline"></div>
           <div class="divbar-fill" style="${fillStyle}"></div>
-          <div class="divbar-value" style="${valueStyle}">${valueFormatter(Math.abs(it.value))}</div>
+          <div class="divbar-value" style="${valueStyle}">${valueFormatter(Math.abs(it.value), it)}</div>
         </div>
       </div>`;
   }).join("");

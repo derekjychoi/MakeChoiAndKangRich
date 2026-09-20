@@ -77,7 +77,7 @@
   import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
-  import { formatKRW, renderDivergingBars } from "./charts.js";
+  import { formatKRW, formatKRWWithPct, renderDivergingBars } from "./charts.js";
   import "./pwa-register.js";
 
   const $ = (id) => document.getElementById(id);
@@ -158,9 +158,9 @@
     latestEval = reports[reports.length - 1].total_eval_krw || 0;
     const evalItems = reports.map((r) => ({
       label: `${r.month.slice(2, 4)}.${parseInt(r.month.split("-")[1], 10)}`,
-      value: r.total_eval_krw || 0,
+      value: r.total_eval_krw || 0, pct: r.overall_profit_pct || 0,
     }));
-    $("trendArea").innerHTML = renderDivergingBars(evalItems, "평가금액", "-", formatKRW, false);
+    $("trendArea").innerHTML = renderDivergingBars(evalItems, "평가금액", "-", formatKRWWithPct, false);
   }
 
   onAuthStateChanged(auth, async (user) => {

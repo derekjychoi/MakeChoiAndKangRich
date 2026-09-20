@@ -48,7 +48,7 @@
   import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
   import "./pwa-register.js";
-  import { formatKRW, renderDivergingBars } from "./charts.js";
+  import { formatKRW, formatKRWWithPct, renderDivergingBars } from "./charts.js";
   import { classifyPriceSource } from "./asset-classify.js";
 
   const TAX_DEDUCTION_KRW = 2_500_000;
@@ -116,7 +116,7 @@
       label: monthLabel(r.month), value: r.realized_pnl_krw || 0,
     }));
     const evalItems = reports.map((r) => ({
-      label: monthLabel(r.month), value: r.total_eval_krw || 0,
+      label: monthLabel(r.month), value: r.total_eval_krw || 0, pct: r.overall_profit_pct || 0,
     }));
 
     const tableRows = reports.map((r) => `
@@ -162,7 +162,7 @@
 
         <div class="chart-block">
           <div class="chart-title">월말 총 평가금액 추이</div>
-          ${renderDivergingBars(evalItems, "평가금액", "-", formatKRW, false)}
+          ${renderDivergingBars(evalItems, "평가금액", "-", formatKRWWithPct, false)}
         </div>
       </div>
 
