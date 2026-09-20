@@ -128,7 +128,7 @@
 
         <div class="chart-block">
           <div class="chart-title">보유 종목 평가손익률 · ${formatMonth(report.month)} 말 기준</div>
-          ${renderDivergingBars(holdingItems, "이익", "손실", formatPct)}
+          ${renderDivergingBars(holdingItems, "이익", "손실", (v) => formatPct(v, false))}
           ${holdingItems.length ? `
             <details class="table-toggle">
               <summary>표로 보기</summary>
