@@ -3,8 +3,6 @@
 export function formatKRW(v) {
   const sign = v < 0 ? "-" : "";
   const abs = Math.abs(v);
-  if (abs >= 1e8) return `${sign}${(abs / 1e8).toFixed(1)}억원`;
-  if (abs >= 1e4) return `${sign}${Math.round(abs / 1e4).toLocaleString()}만원`;
   return `${sign}${Math.round(abs).toLocaleString()}원`;
 }
 
