@@ -173,18 +173,37 @@ details.table-toggle summary { cursor: pointer; font-size: 0.78rem; color: var(-
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .swatch.pos { background: var(--series-pos); }
 .swatch.neg { background: var(--series-neg); }
-.divbar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.divbar-row { margin-bottom: 8px; }
+.divbar-toprow { display: flex; align-items: center; gap: 8px; }
 .divbar-label {
-  width: 92px; flex-shrink: 0;
+  width: 92px; flex-shrink: 0; max-width: 40%;
   font-size: 0.76rem; color: var(--text-secondary);
   text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .divbar-track { position: relative; flex: 1; height: 22px; min-width: 0; }
 .divbar-baseline { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--baseline); }
 .divbar-fill { position: absolute; top: 1px; height: 20px; }
-.divbar-value {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  font-size: 0.74rem; color: var(--text-secondary); white-space: nowrap;
+/* 값 라벨은 막대 아래 한 줄로 - 왼쪽 라벨 폭(92px)+간격(8px)만큼 들여써서 막대 아래에 맞춘다.
+   원 단위 그대로 표시하면서 텍스트가 길어져도 막대나 왼쪽 라벨과 절대 안 겹치게 하기 위함. */
+.divbar-valueline {
+  padding-left: 100px;
+  font-size: 0.74rem; color: var(--text-secondary);
+  word-break: break-all;
+}
+
+/* --- 목표 진행률 미터 --- */
+.meter-track {
+  background: var(--page-plane); border: 1px solid var(--border); border-radius: 999px;
+  height: 28px; overflow: hidden; position: relative; margin: 8px 0;
+}
+.meter-fill { background: var(--series-pos); height: 100%; }
+.meter-label {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 0.85rem; font-weight: 600; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;
+}
+@media (max-width: 480px) {
+  .meter-label { font-size: 0.68rem; padding: 0 6px; }
 }
 
 /* --- 파이차트 --- */

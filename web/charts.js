@@ -46,17 +46,18 @@ export function renderDivergingBars(items, posLegend, negLegend, valueFormatter,
     const fillStyle = isPos
       ? `left:50%; width:${barPct}%; border-radius:0 4px 4px 0; background:var(--series-pos);`
       : `right:50%; width:${barPct}%; border-radius:4px 0 0 4px; background:var(--series-neg);`;
-    const valueStyle = isPos
-      ? `left:calc(50% + ${barPct}% + 6px);`
-      : `right:calc(50% + ${barPct}% + 6px); text-align:right;`;
+    // 값 라벨은 막대 위에 겹쳐 놓지 않고 막대 아래 한 줄로 따로 둔다 - 원 단위 그대로
+    // 보여주면서부터 텍스트가 길어져서, 막대가 크면 왼쪽 라벨과 겹치는 문제가 있었다.
     return `
       <div class="divbar-row">
-        <div class="divbar-label" title="${escapeHtml(it.label)}">${escapeHtml(it.label)}</div>
-        <div class="divbar-track">
-          <div class="divbar-baseline"></div>
-          <div class="divbar-fill" style="${fillStyle}"></div>
-          <div class="divbar-value" style="${valueStyle}">${valueFormatter(Math.abs(it.value), it)}</div>
+        <div class="divbar-toprow">
+          <div class="divbar-label" title="${escapeHtml(it.label)}">${escapeHtml(it.label)}</div>
+          <div class="divbar-track">
+            <div class="divbar-baseline"></div>
+            <div class="divbar-fill" style="${fillStyle}"></div>
+          </div>
         </div>
+        <div class="divbar-valueline" style="text-align:${isPos ? "right" : "left"};">${valueFormatter(Math.abs(it.value), it)}</div>
       </div>`;
   }).join("");
 
