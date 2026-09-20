@@ -116,7 +116,7 @@
         <td>${t.type}</td>
         <td><a href="stock-detail.html?code=${encodeURIComponent(t.code)}">${escapeHtml(t.name)}</a></td>
         <td>${escapeHtml(t.broker || "")}</td>
-        <td>${Math.round(t.unit_price).toLocaleString()}</td>
+        <td>${Math.round(t.unit_price).toLocaleString()}원</td>
         <td>${t.quantity}</td>
         <td>${formatKRW(t.amount)}</td>
         <td class="${t.realized_pnl > 0 ? "text-good" : t.realized_pnl < 0 ? "text-bad" : ""}">${t.realized_pnl ? formatKRW(t.realized_pnl) : "-"}</td>
