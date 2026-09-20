@@ -78,15 +78,15 @@
       </div>
       <div class="field">
         <label>단가 (원)</label>
-        <input type="number" id="f-price" step="any" />
+        <input type="number" id="f-price" step="any" min="0" />
       </div>
       <div class="field">
         <label>수량</label>
-        <input type="number" id="f-qty" step="any" />
+        <input type="number" id="f-qty" step="any" min="0" />
       </div>
       <div class="field">
         <label>금액 (원, 자동계산 - 수정 가능)</label>
-        <input type="number" id="f-amount" step="any" />
+        <input type="number" id="f-amount" step="any" min="0" />
       </div>
       <div class="field">
         <label>실현손익 (원, 매도일 때만 - 자동계산, 수정 가능)</label>
@@ -125,9 +125,18 @@
   const $ = (id) => document.getElementById(id);
   $("f-date").valueAsDate = new Date();
 
+  // 수량/단가/금액은 사용자가 뭘 입력하든(마이너스 포함) 항상 양수 크기로 다룬다.
+  // 매수/매도 방향은 f-type 드롭다운으로만 결정한다 - 값 자체에 부호를 섞지 않는다.
+  function getPositiveQty() {
+    return Math.abs(parseFloat($("f-qty").value) || 0);
+  }
+  function getPositivePrice() {
+    return Math.abs(parseFloat($("f-price").value) || 0);
+  }
+
   function recalcAmount() {
-    const price = parseFloat($("f-price").value) || 0;
-    const qty = parseFloat($("f-qty").value) || 0;
+    const price = getPositivePrice();
+    const qty = getPositiveQty();
     $("f-amount").value = price && qty ? Math.round(price * qty) : "";
   }
 
@@ -202,7 +211,7 @@
     const isSell = $("f-type").value === "매도";
     if (!isSell) return false;
     const code = $("f-code").value.trim();
-    const qty = parseFloat($("f-qty").value) || 0;
+    const qty = getPositiveQty();
     const holding = holdingsByCode.get(code);
     const held = holding ? holding.quantity : 0;
     return qty > held + 1e-9;
@@ -235,8 +244,8 @@
       return;
     }
 
-    const price = parseFloat($("f-price").value) || 0;
-    const qty = parseFloat($("f-qty").value) || 0;
+    const price = getPositivePrice();
+    const qty = getPositiveQty();
     if (holding && price && qty) {
       const suggested = Math.round((price - holding.avg_buy_price_krw) * qty);
       $("f-realized").value = suggested;
@@ -259,7 +268,7 @@
   $("submitBtn").addEventListener("click", async () => {
     const isSell = $("f-type").value === "매도";
     // 매도 거래는 quantity/amount를 음수로 저장한다 (매수=양수 컨벤션, holdings_calc.js가 이를 전제로 계산함).
-    const rawQty = Math.abs(parseFloat($("f-qty").value) || 0);
+    const rawQty = getPositiveQty();
     const rawAmount = Math.abs(parseFloat($("f-amount").value) || 0);
 
     const payload = {
@@ -270,7 +279,7 @@
       market: $("f-market").value,
       sector: $("f-sector").value.trim(),
       broker: $("f-broker").value.trim(),
-      unit_price: parseFloat($("f-price").value) || 0,
+      unit_price: getPositivePrice(),
       quantity: isSell ? -rawQty : rawQty,
       amount: isSell ? -rawAmount : rawAmount,
       realized_pnl: parseFloat($("f-realized").value) || 0,
