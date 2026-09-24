@@ -87,6 +87,7 @@
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
   import "./pwa-register.js";
+  import { syncKnownInstruments } from "./known-instruments.js";
   import { formatKRW, escapeHtml } from "./charts.js";
 
   const $ = (id) => document.getElementById(id);
@@ -194,6 +195,7 @@
     statusEl.textContent = "불러오는 중...";
     const snap = await getDocs(collection(db, "transactions"));
     allTx = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    syncKnownInstruments(db, allTx);
     statusEl.textContent = "";
     render();
   }
