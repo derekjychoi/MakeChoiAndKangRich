@@ -110,12 +110,35 @@ def _maybe_alert(db, code: str, name: str, old_price: float, new_price: float) -
     return True
 
 
+def _load_known_codes(db) -> dict[str, dict]:
+    """settings/known_instruments 캐시에서 종목 목록을 읽는다 (1 read).
+
+    add-transaction.html이 거래 저장 시 이 문서를 갱신해준다. 이게 없으면
+    (최초 1회) transactions 컬렉션 전체를 스캔해서 만든다 - 5분마다 도는
+    이 스크립트가 매번 전체 컬렉션을 읽으면 Firestore 무료 일일 읽기
+    한도(5만 건)를 쉽게 넘겨버려서(실제로 이 문제로 하루 할당량을 다
+    써버린 사고가 있었음), 이후로는 캐시만 읽도록 바꿨다.
+    """
+    doc = db.collection("settings").document("known_instruments").get()
+    if doc.exists and doc.to_dict():
+        return {
+            code: {"code": code, "name": info["name"], "sector": info["sector"]}
+            for code, info in doc.to_dict().items()
+        }
+
+    codes: dict[str, dict] = {}
+    for tx_doc in db.collection("transactions").stream():
+        t = tx_doc.to_dict()
+        codes.setdefault(t["code"], t)
+    db.collection("settings").document("known_instruments").set(
+        {code: {"name": t["name"], "sector": t["sector"]} for code, t in codes.items()}
+    )
+    return codes
+
+
 def main() -> None:
     db = get_db()
-    codes: dict[str, dict] = {}
-    for doc in db.collection("transactions").stream():
-        t = doc.to_dict()
-        codes.setdefault(t["code"], t)
+    codes = _load_known_codes(db)
 
     updated, skipped, alerted = 0, 0, 0
     for code, sample in codes.items():

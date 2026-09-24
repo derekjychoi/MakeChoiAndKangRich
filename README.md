@@ -23,7 +23,7 @@ Firestore (makechoiandkangrich 프로젝트)
 ├─ latest_prices       실시간(근사) 시세 캐시 (외부 크론이 5분마다 GitHub Actions를 깨워 갱신)
 ├─ monthly_reports     월간 집계 + AI 자산배분 의견(target_allocation)/리밸런싱 제안 (매월 1일 자동 생성)
 ├─ price_alerts        가격 급등락 알림 기록 (refresh_live_prices.py가 씀, alerts.html에서 조회)
-└─ settings            투자 목표 등 사용자 설정 (settings/investment_goal, 클라이언트가 직접 읽고 씀)
+└─ settings            투자 목표(investment_goal), 종목 목록 캐시(known_instruments) - 클라이언트가 직접 읽고 씀
 
 cron-job.org (외부, 무료) --workflow_dispatch API 호출--> GitHub Actions
 ├─ daily-briefing.yml    매일 08:00 KST 근처 - 텔레그램 브리핑
@@ -91,7 +91,7 @@ Claude Code CLI는 워크플로우 안에서 공식 설치 스크립트(`curl -f
 | `asset_classify.py` | 종목을 자산군(개별주식/ETF/금/코인)·시세 소스로 분류하는 결정적 규칙 |
 | `holdings_calc.py` | 거래 내역 → 보유 종목(평균단가법)을 계산 |
 | `historical_prices.py` | 월간 리포트용 - 특정 날짜(월말) 기준 과거 종가 조회 (네이버/야후/업비트) |
-| `refresh_live_prices.py` | 실시간 보유현황 페이지용 - 지금 이 순간 시세를 `latest_prices`에 저장, 직전 대비 ±5% 이상 변동 시 `price_alerts`에 기록 + 텔레그램 알림 (네이버/야후는 비공식 엔드포인트라 요청이 잦으면 차단/제한될 수 있음 - 실패한 종목은 조용히 건너뛰고 평단가로 대체됨) |
+| `refresh_live_prices.py` | 실시간 보유현황 페이지용 - 지금 이 순간 시세를 `latest_prices`에 저장, 직전 대비 ±5% 이상 변동 시 `price_alerts`에 기록 + 텔레그램 알림. 종목 목록은 `transactions` 전체를 스캔하지 않고 `settings/known_instruments` 캐시만 읽음 (5분마다 전체 스캔하면 Firestore 무료 일일 읽기 한도 5만 건을 금방 넘김 - 실제로 겪은 사고). 이 캐시는 `add-transaction.html`이 저장할 때마다 갱신함. 네이버/야후는 비공식 엔드포인트라 요청이 잦으면 차단/제한될 수 있음 - 실패한 종목은 조용히 건너뛰고 평단가로 대체됨 |
 | `export_portfolio_snapshot.py` | 텔레그램 브리핑용 - Firestore를 `data/portfolio_snapshot.json` 형식으로 내보냄 |
 | `fetch_news.py` | 보유 종목명으로 네이버 뉴스 검색 API 조회 → JSON 저장 |
 | `generate_monthly_report.py` | 그 달 말 시점 과거 시세로 월간 리포트를 계산해 Firestore에 저장 |

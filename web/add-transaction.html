@@ -108,7 +108,7 @@
 <script type="module">
   import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
-    collection, addDoc, getDocs, serverTimestamp,
+    collection, addDoc, getDocs, serverTimestamp, doc, setDoc,
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
   import "./pwa-register.js";
@@ -308,6 +308,11 @@
         created_at: serverTimestamp(),
         created_by: auth.currentUser.uid,
       });
+      // refresh_live_prices.py가 매번 전체 거래 내역을 안 읽고 이 캐시만 읽도록
+      // 새/기존 종목 정보를 갱신해둔다 (Firestore 읽기 할당량 절약).
+      await setDoc(doc(db, "settings", "known_instruments"), {
+        [payload.code]: { name: payload.name, sector: payload.sector },
+      }, { merge: true });
       statusEl.textContent = `저장 완료: ${payload.date} ${payload.type} ${payload.name} ${rawQty}주`;
       $("f-name").value = "";
       $("f-code").value = "";
