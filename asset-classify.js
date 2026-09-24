@@ -29,7 +29,7 @@ export function classifyPriceSource(h) {
   const code = String(h.code || "");
 
   if (CRYPTO_SECTORS.has(sector) || CRYPTO_CODES.has(code.toUpperCase())) return "upbit_crypto";
-  if (sector === "금") return "unsupported";
+  if (sector === "금") return "naver_gold";
   if (/^[A-Za-z]+$/.test(code)) return "yahoo_us";
   if (/\d/.test(code)) return "naver_kr";
   return "unsupported";
