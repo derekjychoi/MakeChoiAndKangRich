@@ -35,14 +35,14 @@ def classify_asset_class(holding: dict) -> str:
 
 
 def classify_price_source(holding: dict) -> str:
-    """실시간 시세를 어디서 가져와야 하는지 결정한다: naver_kr | yahoo_us | upbit_crypto | unsupported."""
+    """실시간 시세를 어디서 가져와야 하는지 결정한다: naver_kr | naver_gold | yahoo_us | upbit_crypto | unsupported."""
     sector = holding.get("sector", "")
     code = str(holding.get("code", ""))
 
     if sector in CRYPTO_SECTORS or code.upper() in CRYPTO_CODES:
         return "upbit_crypto"
     if sector == "금":
-        return "unsupported"  # 금 현물은 실시간 시세 소스 미지원 - 마지막 매수단가로 대체
+        return "naver_gold"  # KRX 금시장(국내 금, 원/g) - 네이버 marketindex API로 조회 가능
     if code.isalpha():
         return "yahoo_us"
     if any(ch.isdigit() for ch in code):

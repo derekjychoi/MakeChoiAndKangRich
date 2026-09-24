@@ -2,9 +2,10 @@
 latest_prices 컬렉션에 저장한다.
 
 - 국내주식/ETF (6자리 숫자 코드): 네이버 시세 폴링 API
+- 국내 금 현물 (KRX 금시장, 코드 M04020000): 네이버 금속시세 폴링 API (원/g)
 - 해외 티커 (TQQQ 등): 야후 파이낸스 (USD -> KRW 환율 적용)
 - 코인 (BTC/ETH/XRP 등): 업비트 공개 시세 API
-- 금 현물 등 미지원 자산: 건너뜀 (holdings_calc가 평단가로 대체 처리)
+- 그 외 미지원 자산: 건너뜀 (holdings_calc가 평단가로 대체 처리)
 
 직전 조회 시점 대비 ALERT_THRESHOLD_PCT 이상 급등/급락하면 텔레그램으로 알린다.
 
@@ -23,6 +24,7 @@ from holdings_calc import compute_holdings
 ALERT_THRESHOLD_PCT = 5.0
 
 NAVER_URL = "https://polling.finance.naver.com/api/realtime/domestic/stock/{code}"
+NAVER_GOLD_URL = "https://polling.finance.naver.com/api/realtime/marketindex/metals/{code}"
 YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
 YAHOO_FX_URL = "https://query1.finance.yahoo.com/v8/finance/chart/KRW=X"
 UPBIT_URL = "https://api.upbit.com/v1/ticker"
@@ -37,6 +39,16 @@ def fetch_naver_kr(code: str) -> float | None:
         r.raise_for_status()
         close = r.json()["datas"][0]["closePrice"]
         return float(str(close).replace(",", ""))
+    except Exception:
+        return None
+
+
+def fetch_naver_gold_kr(code: str) -> float | None:
+    """KRX 금시장(국내 금, 원/g) 시세. code 예: M04020000."""
+    try:
+        r = requests.get(NAVER_GOLD_URL.format(code=code), headers=HEADERS, timeout=5)
+        r.raise_for_status()
+        return float(r.json()["datas"][0]["closePriceRaw"])
     except Exception:
         return None
 
@@ -76,6 +88,7 @@ def fetch_upbit_crypto(code: str) -> float | None:
 
 FETCHERS = {
     "naver_kr": fetch_naver_kr,
+    "naver_gold": fetch_naver_gold_kr,
     "yahoo_us": fetch_yahoo_us,
     "upbit_crypto": fetch_upbit_crypto,
 }

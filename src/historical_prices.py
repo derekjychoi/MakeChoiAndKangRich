@@ -43,6 +43,25 @@ def _naver_kr_close(code: str, as_of: date) -> float | None:
         return None
 
 
+def _naver_gold_close(code: str, as_of: date) -> float | None:
+    """KRX 금시장(국내 금, 원/g) 일별 종가. code 예: M04020000."""
+    try:
+        start = as_of - timedelta(days=10)
+        r = requests.get(
+            f"https://api.stock.naver.com/chart/domestic/item/{code}/day",
+            params={
+                "startDateTime": start.strftime("%Y%m%d"),
+                "endDateTime": as_of.strftime("%Y%m%d"),
+            },
+            headers=HEADERS, timeout=8,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        return float(rows[-1]["closePrice"]) if rows else None
+    except Exception:
+        return None
+
+
 def _upbit_krw_close(code: str, as_of: date) -> float | None:
     try:
         to_param = (as_of + timedelta(days=1)).strftime("%Y-%m-%d") + " 00:00:00"
@@ -87,6 +106,7 @@ def _yahoo_us_krw_close(ticker: str, as_of: date) -> float | None:
 
 _FETCHERS = {
     "naver_kr": _naver_kr_close,
+    "naver_gold": _naver_gold_close,
     "yahoo_us": _yahoo_us_krw_close,
     "upbit_crypto": _upbit_krw_close,
 }
