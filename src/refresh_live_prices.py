@@ -18,6 +18,7 @@ from firebase_admin import firestore
 import send_telegram
 from asset_classify import classify_price_source
 from firestore_client import get_db
+from holdings_calc import compute_holdings
 
 ALERT_THRESHOLD_PCT = 5.0
 
@@ -111,11 +112,14 @@ def _maybe_alert(db, code: str, name: str, old_price: float, new_price: float) -
 
 
 def _load_known_codes(db) -> dict[str, dict]:
-    """settings/known_instruments 캐시에서 종목 목록을 읽는다 (1 read).
+    """settings/known_instruments 캐시에서 "현재 보유 중"인 종목만 읽는다 (1 read).
 
-    add-transaction.html이 거래 저장 시 이 문서를 갱신해준다. 이게 없으면
-    (최초 1회) transactions 컬렉션 전체를 스캔해서 만든다 - 5분마다 도는
-    이 스크립트가 매번 전체 컬렉션을 읽으면 Firestore 무료 일일 읽기
+    add-transaction.html/journal.html이 거래 내역을 조회할 때마다 이 문서를
+    보유 여부(held)까지 함께 갱신해준다. 전량매도해서 더 이상 안 들고 있는
+    종목은 시세 조회/급등락 알림 대상에서 제외한다.
+
+    캐시가 없으면(최초 1회) transactions 컬렉션 전체를 스캔해서 만든다 - 5분마다
+    도는 이 스크립트가 매번 전체 컬렉션을 읽으면 Firestore 무료 일일 읽기
     한도(5만 건)를 쉽게 넘겨버려서(실제로 이 문제로 하루 할당량을 다
     써버린 사고가 있었음), 이후로는 캐시만 읽도록 바꿨다.
     """
@@ -124,16 +128,21 @@ def _load_known_codes(db) -> dict[str, dict]:
         return {
             code: {"code": code, "name": info["name"], "sector": info["sector"]}
             for code, info in doc.to_dict().items()
+            if info.get("held")
         }
 
     codes: dict[str, dict] = {}
+    all_tx: list[dict] = []
     for tx_doc in db.collection("transactions").stream():
         t = tx_doc.to_dict()
+        all_tx.append(t)
         codes.setdefault(t["code"], t)
-    db.collection("settings").document("known_instruments").set(
-        {code: {"name": t["name"], "sector": t["sector"]} for code, t in codes.items()}
-    )
-    return codes
+    held_codes = {h["code"] for h in compute_holdings(all_tx)}
+    db.collection("settings").document("known_instruments").set({
+        code: {"name": t["name"], "sector": t["sector"], "held": code in held_codes}
+        for code, t in codes.items()
+    })
+    return {code: t for code, t in codes.items() if code in held_codes}
 
 
 def main() -> None:
