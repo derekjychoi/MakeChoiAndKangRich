@@ -11,12 +11,19 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from asset_classify import classify_asset_class
 from firestore_client import get_db
 
 CLAUDE_TIMEOUT_SEC = 300
+KST = timezone(timedelta(hours=9))
+
+
+def _kst_today() -> date:
+    """generate_monthly_report.py와 동일한 이유로 KST 기준 오늘을 명시적으로 계산한다
+    (GitHub Actions 러너는 UTC라 date.today()를 쓰면 매월 1일 KST 실행 시 한 달 밀림)."""
+    return datetime.now(KST).date()
 
 
 def _prev_month_str(month_str: str) -> str:
@@ -129,7 +136,8 @@ def main() -> None:
     if args.month:
         month = args.month
     else:
-        today_str = f"{date.today().year:04d}-{date.today().month:02d}"
+        today = _kst_today()
+        today_str = f"{today.year:04d}-{today.month:02d}"
         month = _prev_month_str(today_str)
 
     doc_ref = db.collection("monthly_reports").document(month)

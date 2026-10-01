@@ -15,6 +15,17 @@ from firestore_client import get_db
 from historical_prices import fetch_historical_price_map
 from holdings_calc import apply_prices, compute_holdings
 
+KST = timezone(timedelta(hours=9))
+
+
+def _kst_today() -> date:
+    """GitHub Actions 러너는 UTC로 돈다. date.today()를 그냥 쓰면 KST 기준
+    "매월 1일 08시" 실행 시점이 UTC로는 여전히 전날(= 전월 말일)이라서,
+    아래 _prev_month()가 한 달 전체를 밀려서 계산하는 버그가 났었다
+    (예: KST 10/1 08:00 실행 = UTC 9/30 23:00 → date.today()가 9월로 나와
+    "지난달"이 8월로 계산됨 - 9월 리포트가 영영 안 생기는 문제)."""
+    return datetime.now(KST).date()
+
 
 def _prev_month(today: date) -> tuple[int, int]:
     first_of_this_month = today.replace(day=1)
@@ -91,10 +102,10 @@ def main() -> None:
     if args.month:
         year, month = (int(x) for x in args.month.split("-"))
     else:
-        year, month = _prev_month(date.today())
+        year, month = _prev_month(_kst_today())
 
     month_str = f"{year:04d}-{month:02d}"
-    today = date.today()
+    today = _kst_today()
     current_month_str = f"{today.year:04d}-{today.month:02d}"
     if month_str >= current_month_str:
         raise SystemExit(
