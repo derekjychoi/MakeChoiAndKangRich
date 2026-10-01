@@ -94,7 +94,7 @@ Claude Code CLI는 워크플로우 안에서 공식 설치 스크립트(`curl -f
 | `refresh_live_prices.py` | 실시간 보유현황 페이지용 - 지금 이 순간 시세를 `latest_prices`에 저장, 직전 대비 ±5% 이상 변동 시 `price_alerts`에 기록 + 텔레그램 알림. 알림/시세 조회 대상은 **현재 실제로 보유 중인 종목**으로만 한정한다 (전량매도한 종목은 제외). 종목 목록은 `transactions` 전체를 스캔하지 않고 `settings/known_instruments` 캐시(종목별 `held` 여부 포함)만 읽음 (5분마다 전체 스캔하면 Firestore 무료 일일 읽기 한도 5만 건을 금방 넘김 - 실제로 겪은 사고). 이 캐시는 `add-transaction.html`/`journal.html`이 거래 내역을 조회할 때마다 `computeHoldings()` 결과로 갱신함 (`web/known-instruments.js`). 네이버/야후는 비공식 엔드포인트라 요청이 잦으면 차단/제한될 수 있음 - 실패한 종목은 조용히 건너뛰고 평단가로 대체됨 |
 | `export_portfolio_snapshot.py` | 텔레그램 브리핑용 - Firestore를 `data/portfolio_snapshot.json` 형식으로 내보냄 |
 | `fetch_news.py` | 보유 종목명으로 네이버 뉴스 검색 API 조회 → JSON 저장 |
-| `generate_monthly_report.py` | 그 달 말 시점 과거 시세로 월간 리포트를 계산해 Firestore에 저장 |
+| `generate_monthly_report.py` | 그 달 말 시점 과거 시세로 월간 리포트를 계산해 Firestore에 저장. "지난달"은 KST 기준으로 명시적으로 계산한다 (GitHub Actions 러너는 UTC라 `date.today()`를 그냥 쓰면 매월 1일 KST 08시 실행 시점에 UTC로는 아직 전월 말일이라 한 달 밀려 계산되는 버그가 있었음) |
 | `generate_sector_advice.py` | `claude -p`로 자산배분 의견 + 구조화된 목표비중(`target_allocation`)·리밸런싱 제안(JSON)을 생성 |
 | `send_telegram.py` | 텔레그램 발송 (4096자 초과 시 자동 분할). CLI/모듈 겸용 |
 | `migrate_transactions_to_firestore.py` | 1회성 - 구글시트 스냅샷을 `transactions`로 이전 (이미 완료됨) |
