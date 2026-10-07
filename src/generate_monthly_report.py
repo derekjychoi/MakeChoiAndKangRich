@@ -59,6 +59,8 @@ def build_report(transactions: list[dict], holdings: list[dict], year: int, mont
             "name": h["name"],
             "sector": h["sector"],
             "code": h["code"],
+            "quantity": h["quantity"],
+            "current_price_krw": h["current_price_krw"],
             "eval_total_krw": h["eval_total_krw"],
             "profit_krw": h["profit_krw"],
             "profit_pct": h["profit_pct"],

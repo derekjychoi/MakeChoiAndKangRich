@@ -103,7 +103,7 @@ Claude Code CLI는 워크플로우 안에서 공식 설치 스크립트(`curl -f
 | `export_portfolio_snapshot.py` | 텔레그램 브리핑용 - Firestore를 `data/portfolio_snapshot.json` 형식으로 내보냄 |
 | `fetch_news.py` | 보유 종목명으로 네이버 뉴스 검색 API 조회 → JSON 저장 |
 | `generate_monthly_report.py` | 그 달 말 시점 과거 시세로 월간 리포트를 계산해 Firestore에 저장. "지난달"은 KST 기준으로 명시적으로 계산한다 (GitHub Actions 러너는 UTC라 `date.today()`를 그냥 쓰면 매월 1일 KST 08시 실행 시점에 UTC로는 아직 전월 말일이라 한 달 밀려 계산되는 버그가 있었음) |
-| `generate_sector_advice.py` | `claude -p`로 자산배분 의견 + 구조화된 목표비중(`target_allocation`)·리밸런싱 제안(JSON)을 생성 |
+| `generate_sector_advice.py` | `claude -p`로 자산배분 방향성 의견을 매달 생성. 목표비중(`target_allocation`)·리밸런싱 제안(JSON)은 **반기(6월/12월)에만** 같이 생성한다 (매달 제안하면 너무 잦은 매매를 유도하기 쉽다는 피드백 반영). 리밸런싱 제안은 보유수량·현재가를 프롬프트에 같이 넘겨서 국내주식/ETF는 "몇 주"인지 정수로 제시하도록 함 (예전엔 "100만원어치 매도"처럼 1주 단위 매매 현실을 무시한 금액 제안이 나왔음) |
 | `send_telegram.py` | 텔레그램 발송 (4096자 초과 시 자동 분할). CLI/모듈 겸용 |
 | `migrate_transactions_to_firestore.py` | 1회성 - 구글시트 스냅샷을 `transactions`로 이전 (이미 완료됨) |
 | `fetch_portfolio.py` | **레거시, 더 이상 안 씀** - 예전 구글시트 기반 수집 스크립트 |
