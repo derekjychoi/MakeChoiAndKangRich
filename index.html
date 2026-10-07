@@ -103,16 +103,21 @@
     if (!actions || actions.length === 0) return "";
     return `
       <table class="data-table rebalance-table" style="margin-top:10px;">
-        <thead><tr><th>구분</th><th>종목/자산</th><th>대략 금액</th><th>이유</th></tr></thead>
+        <thead><tr><th>구분</th><th>종목/자산</th><th>수량/금액</th><th>이유</th></tr></thead>
         <tbody>
-          ${actions.map((a) => `
+          ${actions.map((a) => {
+            const qtyPart = a.quantity ? `${a.quantity}주` : "";
+            const amountPart = a.amount_krw ? formatKRW(a.amount_krw) : "";
+            const qtyAmount = [qtyPart, amountPart ? `(약 ${amountPart})` : ""].filter(Boolean).join(" ") || "-";
+            return `
             <tr>
               <td class="${a.action === "매도" ? "tag-sell" : "tag-buy"}">${escapeHtml(a.action || "")}</td>
               <td>${escapeHtml(a.name || "")}</td>
-              <td>${a.amount_krw ? formatKRW(a.amount_krw) : "-"}</td>
+              <td>${qtyAmount}</td>
               <td>${escapeHtml(a.reason || "")}</td>
             </tr>
-          `).join("")}
+          `;
+          }).join("")}
         </tbody>
       </table>`;
   }
