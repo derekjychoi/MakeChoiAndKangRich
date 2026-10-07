@@ -43,6 +43,16 @@
   <p id="status"></p>
 </div>
 
+<script>
+  // 로그인 상태 깜빡임(페이지 이동마다 "로그인해주세요" 화면이 잠깐 보이는 것) 방지:
+  // 이전에 로그인했던 적이 있으면 Firebase 초기화(비동기)를 기다리지 않고 바로
+  // 콘텐츠를 보여준다. 실제로 로그아웃된 상태였다면 아래 onAuthStateChanged가
+  // 금방 signedOut 화면으로 바로잡는다.
+  if (localStorage.getItem("iaAuthed") === "1") {
+    document.getElementById("signedOut").style.display = "none";
+    document.getElementById("contentArea").style.display = "block";
+  }
+</script>
 <script type="module">
   import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -203,10 +213,12 @@
 
   onAuthStateChanged(auth, async (user) => {
     if (!user) {
+      localStorage.removeItem("iaAuthed");
       signedOutEl.style.display = "block";
       contentAreaEl.style.display = "none";
       return;
     }
+    localStorage.setItem("iaAuthed", "1");
     signedOutEl.style.display = "none";
     contentAreaEl.style.display = "block";
 
