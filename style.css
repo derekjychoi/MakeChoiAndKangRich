@@ -39,6 +39,7 @@
   }
 }
 * { box-sizing: border-box; }
+html, body { overflow-x: hidden; }
 body {
   margin: 0;
   background: var(--page-plane);
@@ -108,6 +109,7 @@ label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-
 input, select {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
   padding: 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -115,6 +117,9 @@ input, select {
   color: var(--text-primary);
   font-size: 0.95rem;
 }
+/* 모바일 브라우저(특히 iOS Safari)는 type=date 내부 달력 위젯의 최소 폭을
+   width:100%로도 못 줄이는 경우가 있다 - 좌우 패딩을 줄여 여유를 더 준다. */
+input[type="date"] { padding-left: 6px; padding-right: 6px; }
 /* 그리드 트랙은 기본적으로 내용물의 최소 크기 밑으로 안 줄어든다(min-width:auto) -
    <input type="date">는 그 최소 크기가 생각보다 커서, 그걸 안 주면 좁은 화면에서
    트랙(그리고 카드 전체)이 화면 밖으로 밀려나 버린다 (모바일에서 실측된 사이즈 오버). */
