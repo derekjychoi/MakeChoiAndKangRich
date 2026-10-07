@@ -107,6 +107,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; }
 input, select {
   width: 100%;
+  min-width: 0;
   padding: 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -114,7 +115,13 @@ input, select {
   color: var(--text-primary);
   font-size: 0.95rem;
 }
-.field { margin-bottom: 4px; }
+/* 그리드 트랙은 기본적으로 내용물의 최소 크기 밑으로 안 줄어든다(min-width:auto) -
+   <input type="date">는 그 최소 크기가 생각보다 커서, 그걸 안 주면 좁은 화면에서
+   트랙(그리고 카드 전체)이 화면 밖으로 밀려나 버린다 (모바일에서 실측된 사이즈 오버). */
+.field { margin-bottom: 4px; min-width: 0; }
+@media (max-width: 480px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
 
 /* --- 스탯 타일 --- */
 .stat-grid {
