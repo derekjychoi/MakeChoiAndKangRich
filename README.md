@@ -53,6 +53,13 @@ web/ (GitHub Pages, gh-pages 브랜치, PWA로 홈 화면 추가 가능)
 인증은 Firebase Authentication(Google 로그인)으로 하고, Firestore 보안 규칙
 (`firestore.rules`)에서 허용된 계정 UID만 읽고 쓸 수 있게 제한한다.
 
+이 앱은 SPA가 아니라 페이지(html)마다 완전히 새로 로드되는 구조라, 페이지를
+이동할 때마다 Firebase가 비동기로 로그인 세션을 다시 확인하는 짧은 순간 동안
+"로그인해주세요" 화면이 깜빡였었다. 각 페이지 상단에 작은 동기 스크립트를 두고
+`localStorage`의 `iaAuthed` 플래그(이전에 로그인한 적이 있으면 세팅됨)를 보고
+Firebase 초기화를 기다리지 않고 콘텐츠를 먼저 보여준다 - 실제로 로그아웃된
+상태였다면 뒤따르는 `onAuthStateChanged`가 바로 되돌린다.
+
 ## 자동 실행 (cron-job.org → GitHub Actions workflow_dispatch)
 
 | 워크플로우 | 주기(외부 크론 기준) | 실제 실행 스크립트 | 필요한 저장소 시크릿 |
