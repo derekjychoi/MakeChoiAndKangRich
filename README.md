@@ -43,7 +43,8 @@ web/ (GitHub Pages, gh-pages 브랜치, PWA로 홈 화면 추가 가능)
 ├─ holdings.html         실시간 보유현황 (Firestore 실시간 구독, 목표비중 대비 현재 비교,
 │                        코인은 브라우저에서 직접 시세 조회)
 ├─ journal.html          전체 거래 일지 (검색/수정/삭제)
-├─ add-transaction.html  매수/매도 입력 폼 (실현손익 자동계산, 보유수량 초과 매도 경고)
+├─ add-transaction.html  매수/매도 입력 폼 (실현손익 자동계산, 보유수량 초과 매도 경고,
+│                        시장=해외 선택 시 달러 단가 입력 → 실시간 환율로 원화 단가 자동계산)
 ├─ stock-detail.html     종목 상세 (?code=로 진입 - 매매 이력 + 월별 손익률 추이)
 ├─ alerts.html           가격 급등락 알림 로그 (price_alerts 컬렉션)
 └─ goal.html             투자 목표 설정 + 진행률 미터

@@ -79,8 +79,12 @@
         <input type="text" id="f-broker" placeholder="예: 키움증권" list="broker-options" />
         <datalist id="broker-options"></datalist>
       </div>
+      <div class="field" id="f-price-usd-field" style="display:none;">
+        <label>단가 (USD)</label>
+        <input type="number" id="f-price-usd" step="any" min="0" placeholder="예: 71.50" />
+      </div>
       <div class="field">
-        <label>단가 (원)</label>
+        <label id="f-price-label">단가 (원)</label>
         <input type="number" id="f-price" step="any" min="0" />
       </div>
       <div class="field">
@@ -97,6 +101,7 @@
       </div>
     </div>
 
+    <p id="fxRateInfo" class="month-sub" style="display:none;"></p>
     <p id="holdingInfo" class="month-sub" style="display:none;"></p>
     <p id="sellWarning" class="text-bad" style="display:none; font-size:0.85rem;"></p>
 
@@ -137,6 +142,69 @@
   function getPositivePrice() {
     return Math.abs(parseFloat($("f-price").value) || 0);
   }
+
+  // 해외(USD) 종목은 달러 단가를 입력받아 실시간 환율로 원화 단가를 자동 계산한다.
+  // CORS가 열려 있는 무료 환율 API(open.er-api.com, 1일 1회 갱신)를 브라우저에서 바로 호출.
+  let usdKrwRate = null;
+  let fetchingRate = false;
+  let rateFetchAttempted = false;
+
+  async function fetchUsdKrwRate() {
+    if (fetchingRate) return;
+    fetchingRate = true;
+    rateFetchAttempted = true;
+    $("fxRateInfo").style.display = "block";
+    $("fxRateInfo").textContent = "환율 조회 중...";
+    try {
+      const res = await fetch("https://open.er-api.com/v6/latest/USD");
+      const data = await res.json();
+      const rate = data?.rates?.KRW;
+      if (!rate) throw new Error("환율 응답에 KRW 없음");
+      usdKrwRate = rate;
+      $("fxRateInfo").textContent = `환율: 1 USD = ${rate.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}원 (자동조회, ${data.time_last_update_utc || ""})`;
+    } catch (err) {
+      usdKrwRate = null;
+      $("fxRateInfo").innerHTML = '환율 조회 실패 - 단가(원)을 직접 입력해주세요. <a href="#" id="fxRetry">다시 시도</a>';
+      $("fxRetry")?.addEventListener("click", (e) => {
+        e.preventDefault();
+        rateFetchAttempted = false;
+        fetchUsdKrwRate();
+      });
+    } finally {
+      fetchingRate = false;
+      syncMarketFields();
+      syncSellHelpers();
+    }
+  }
+
+  function recalcPriceFromUsd() {
+    const usdPrice = Math.abs(parseFloat($("f-price-usd").value) || 0);
+    if (usdPrice && usdKrwRate) {
+      $("f-price").value = Math.round(usdPrice * usdKrwRate * 100) / 100;
+    }
+  }
+
+  function syncMarketFields() {
+    const isOverseas = $("f-market").value === "해외";
+    $("f-price-usd-field").style.display = isOverseas ? "block" : "none";
+    if (!isOverseas) {
+      $("f-price-label").textContent = "단가 (원)";
+      $("f-price").readOnly = false;
+      $("fxRateInfo").style.display = "none";
+      return;
+    }
+    if (!usdKrwRate && !fetchingRate && !rateFetchAttempted) fetchUsdKrwRate();
+    if (usdKrwRate) {
+      $("f-price-label").textContent = "단가 (원, 환율 자동계산)";
+      $("f-price").readOnly = true;
+      recalcPriceFromUsd();
+    } else {
+      $("f-price-label").textContent = "단가 (원, 환율 조회 실패 - 직접 입력)";
+      $("f-price").readOnly = false;
+    }
+  }
+  $("f-market").addEventListener("change", () => { syncMarketFields(); syncSellHelpers(); });
+  $("f-price-usd").addEventListener("input", () => { recalcPriceFromUsd(); syncSellHelpers(); });
 
   function recalcAmount() {
     const price = getPositivePrice();
@@ -185,6 +253,7 @@
       $("f-code").value = "";
       $("f-sector").value = "";
       $("f-market").value = "국내";
+      syncMarketFields();
       return;
     }
     const h = existingHoldings[parseInt(e.target.value, 10)];
@@ -192,6 +261,7 @@
     $("f-code").value = h.code;
     $("f-sector").value = h.sector;
     $("f-market").value = h.market;
+    syncMarketFields();
     syncSellHelpers();
   });
 
@@ -278,6 +348,7 @@
     const rawQty = getPositiveQty();
     const rawAmount = Math.abs(parseFloat($("f-amount").value) || 0);
 
+    const isOverseas = $("f-market").value === "해외";
     const payload = {
       date: $("f-date").value,
       type: $("f-type").value,
@@ -291,6 +362,11 @@
       amount: isSell ? -rawAmount : rawAmount,
       realized_pnl: parseFloat($("f-realized").value) || 0,
     };
+    // 참고용 기록(계산엔 안 쓰임) - unit_price/amount는 항상 원화로 저장한다.
+    if (isOverseas && usdKrwRate) {
+      payload.unit_price_usd = Math.abs(parseFloat($("f-price-usd").value) || 0);
+      payload.fx_rate_used = usdKrwRate;
+    }
 
     if (!payload.date || !payload.name || !payload.code || !rawQty || !rawAmount) {
       statusEl.textContent = "날짜/종목명/코드/수량/금액은 필수입니다.";
@@ -315,11 +391,13 @@
       $("f-code").value = "";
       $("f-sector").value = "";
       $("f-price").value = "";
+      $("f-price-usd").value = "";
       $("f-qty").value = "";
       $("f-amount").value = "";
       $("f-realized").value = "0";
       $("existingPick").value = "";
       await loadExisting();
+      syncMarketFields();
       syncSellHelpers();
     } catch (err) {
       statusEl.textContent = "저장 실패: " + err.message;
@@ -337,6 +415,7 @@
     signedOutEl.style.display = "none";
     formAreaEl.style.display = "block";
     await loadExisting();
+    syncMarketFields();
     syncSellHelpers();
   });
 </script>
