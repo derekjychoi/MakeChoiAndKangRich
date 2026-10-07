@@ -13,6 +13,10 @@
   .toolbar input { flex:1; min-width:160px; }
   .row-actions button { padding:4px 8px; font-size:0.75rem; margin-left:4px; }
   #editPanel { display:none; }
+  /* 좁은 화면에서 셀 글자가 한 글자씩 세로로 꺾여 보이는 걸 막는다 - 테이블이
+     내용물 폭만큼 넓어지게 하고, 넘치는 만큼은 래퍼 div가 가로 스크롤로 보여준다. */
+  #journalTable { width: max-content; min-width: 100%; }
+  #journalTable th, #journalTable td { white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -65,7 +69,7 @@
       </div>
       <p id="summaryLine" class="month-sub"></p>
       <div style="overflow-x:auto;">
-        <table class="data-table">
+        <table class="data-table" id="journalTable">
           <thead>
             <tr>
               <th>날짜</th><th>구분</th><th>종목</th><th>증권사</th>
