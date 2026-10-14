@@ -49,11 +49,17 @@
         </div>
         <div class="field"><label>종목명</label><input type="text" id="e-name" /></div>
         <div class="field"><label>종목코드</label><input type="text" id="e-code" /></div>
-        <div class="field"><label>단가</label><input type="number" id="e-price" step="any" /></div>
+        <div class="field"><label>시장</label>
+          <select id="e-market"><option value="국내">국내</option><option value="해외">해외</option></select>
+        </div>
+        <div class="field e-usd-field" style="display:none;"><label>단가 (USD)</label><input type="number" id="e-price-usd" step="any" min="0" /></div>
+        <div class="field e-usd-field" style="display:none;"><label>환율 (원/USD, 수정 가능)</label><input type="number" id="e-fx" step="any" min="0" /></div>
+        <div class="field"><label id="e-price-label">단가 (원)</label><input type="number" id="e-price" step="any" /></div>
         <div class="field"><label>수량</label><input type="number" id="e-qty" step="any" /></div>
-        <div class="field"><label>금액</label><input type="number" id="e-amount" step="any" /></div>
-        <div class="field"><label>실현손익</label><input type="number" id="e-realized" step="any" /></div>
+        <div class="field"><label>금액 (원)</label><input type="number" id="e-amount" step="any" /></div>
+        <div class="field"><label>실현손익 (원)</label><input type="number" id="e-realized" step="any" /></div>
       </div>
+      <p id="e-fxInfo" class="month-sub" style="display:none;"></p>
       <button id="saveEditBtn" style="margin-top:12px;">저장</button>
       <button id="cancelEditBtn" class="secondary" style="margin-top:12px;">취소</button>
     </div>
@@ -97,7 +103,7 @@
 <script type="module">
   import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
-    collection, getDocs, doc, updateDoc, deleteDoc,
+    collection, getDocs, doc, updateDoc, deleteDoc, deleteField,
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
   import "./pwa-register.js";
@@ -131,7 +137,7 @@
         <td>${t.type}</td>
         <td><a href="stock-detail.html?code=${encodeURIComponent(t.code)}">${escapeHtml(t.name)}</a></td>
         <td>${escapeHtml(t.broker || "")}</td>
-        <td>${Math.round(t.unit_price).toLocaleString()}원</td>
+        <td>${Math.round(t.unit_price).toLocaleString()}원${t.unit_price_usd ? ` <span class="month-sub">($${t.unit_price_usd.toLocaleString("en-US", { maximumFractionDigits: 4 })})</span>` : ""}</td>
         <td>${t.quantity}</td>
         <td>${formatKRW(t.amount)}</td>
         <td class="${t.realized_pnl > 0 ? "text-good" : t.realized_pnl < 0 ? "text-bad" : ""}">${t.realized_pnl ? formatKRW(t.realized_pnl) : "-"}</td>
@@ -153,6 +159,79 @@
   $("searchBox").addEventListener("input", render);
   $("typeFilter").addEventListener("change", render);
 
+  // 해외(USD) 거래는 달러 단가 x 환율로 원화 단가/금액을 다시 계산한다. 저장되는
+  // unit_price/amount는 항상 원화(add-transaction.html과 동일 컨벤션). 과거 거래를
+  // 고치는 화면이라 오늘 환율이 아니라 거래일 환율을 조회한다 - frankfurter(ECB 고시
+  // 환율, CORS 허용, 주말/휴일은 직전 영업일 값). 기존에 기록된 fx_rate_used가 있으면 그걸 우선 쓴다.
+  let fxReqSeq = 0;
+
+  async function fetchFxForDate(date) {
+    if (!date) return;
+    const seq = ++fxReqSeq;
+    $("e-fxInfo").style.display = "block";
+    $("e-fxInfo").textContent = `${date} 환율 조회 중...`;
+    try {
+      const res = await fetch(`https://api.frankfurter.dev/v1/${date}?from=USD&to=KRW`);
+      const data = await res.json();
+      const rate = data?.rates?.KRW;
+      if (!rate) throw new Error("환율 응답에 KRW 없음");
+      if (seq !== fxReqSeq) return; // 그 사이 날짜/거래가 바뀌었으면 무시
+      $("e-fx").value = rate;
+      syncPriceLock();
+      $("e-fxInfo").textContent = `환율: 1 USD = ${rate.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}원 (${data.date} 고시 기준, 자동조회 - 실제 체결 환율과 다르면 직접 수정)`;
+      recalcFromUsd();
+    } catch (err) {
+      if (seq !== fxReqSeq) return;
+      $("e-fxInfo").textContent = "환율 조회 실패 - 환율을 직접 입력해주세요.";
+    }
+  }
+
+  function recalcFromUsd() {
+    if ($("e-market").value !== "해외") return;
+    const usd = Math.abs(parseFloat($("e-price-usd").value) || 0);
+    const fx = Math.abs(parseFloat($("e-fx").value) || 0);
+    if (!usd || !fx) return;
+    const price = Math.round(usd * fx * 100) / 100;
+    $("e-price").value = price;
+    const qty = Math.abs(parseFloat($("e-qty").value) || 0);
+    if (qty) {
+      // 매도 거래는 amount를 음수로 저장하는 컨벤션 유지
+      const sign = $("e-type").value === "매도" ? -1 : 1;
+      $("e-amount").value = sign * Math.round(price * qty);
+    }
+  }
+
+  // 달러 단가와 환율이 모두 있을 때만 원화 단가를 잠근다 (없으면 원화 직접 입력)
+  function syncPriceLock() {
+    const locked = $("e-market").value === "해외"
+      && !!parseFloat($("e-price-usd").value) && !!parseFloat($("e-fx").value);
+    $("e-price").readOnly = locked;
+    $("e-price-label").textContent = locked ? "단가 (원, USD x 환율 자동계산)" : "단가 (원)";
+  }
+
+  function syncEditMarketFields() {
+    const isOverseas = $("e-market").value === "해외";
+    document.querySelectorAll(".e-usd-field").forEach((el) => { el.style.display = isOverseas ? "block" : "none"; });
+    syncPriceLock();
+    if (!isOverseas) {
+      fxReqSeq++;
+      $("e-fxInfo").style.display = "none";
+      return;
+    }
+    if (!parseFloat($("e-fx").value)) fetchFxForDate($("e-date").value);
+  }
+
+  $("e-market").addEventListener("change", syncEditMarketFields);
+  $("e-date").addEventListener("change", () => {
+    if ($("e-market").value === "해외") fetchFxForDate($("e-date").value);
+  });
+  // 환율을 직접 고치기 시작하면 진행 중인 자동조회 결과가 덮어쓰지 않게 한다
+  $("e-fx").addEventListener("input", () => { fxReqSeq++; });
+  ["e-price-usd", "e-fx", "e-qty"].forEach((id) => {
+    $(id).addEventListener("input", () => { recalcFromUsd(); syncPriceLock(); });
+  });
+  $("e-type").addEventListener("change", recalcFromUsd);
+
   function openEdit(id) {
     const t = allTx.find((x) => x.id === id);
     if (!t) return;
@@ -165,6 +244,16 @@
     $("e-qty").value = t.quantity;
     $("e-amount").value = t.amount;
     $("e-realized").value = t.realized_pnl || 0;
+    $("e-market").value = t.market === "해외" ? "해외" : "국내";
+    $("e-price-usd").value = t.unit_price_usd || "";
+    $("e-fx").value = t.fx_rate_used || "";
+    fxReqSeq++;
+    $("e-fxInfo").style.display = "none";
+    if (t.market === "해외" && t.fx_rate_used) {
+      $("e-fxInfo").style.display = "block";
+      $("e-fxInfo").textContent = "환율: 입력 당시 기록된 값 (날짜를 바꾸면 해당일 환율로 다시 조회)";
+    }
+    syncEditMarketFields();
     $("editPanel").style.display = "block";
     $("editPanel").scrollIntoView({ behavior: "smooth" });
   }
@@ -174,8 +263,15 @@
   $("saveEditBtn").addEventListener("click", async () => {
     const id = $("editPanel").dataset.editId;
     statusEl.textContent = "저장 중...";
+    const isOverseas = $("e-market").value === "해외";
+    const usd = Math.abs(parseFloat($("e-price-usd").value) || 0);
+    const fx = Math.abs(parseFloat($("e-fx").value) || 0);
     try {
       await updateDoc(doc(db, "transactions", id), {
+        market: $("e-market").value,
+        // 참고용 기록(계산엔 안 쓰임). 국내로 바꾸거나 달러 단가를 비우면 지운다.
+        unit_price_usd: isOverseas && usd && fx ? usd : deleteField(),
+        fx_rate_used: isOverseas && usd && fx ? fx : deleteField(),
         date: $("e-date").value,
         type: $("e-type").value,
         name: $("e-name").value.trim(),

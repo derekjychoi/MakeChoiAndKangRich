@@ -42,7 +42,8 @@ web/ (GitHub Pages, gh-pages 브랜치, PWA로 홈 화면 추가 가능)
 ├─ yearly.html           연간 리포트 (월별 순매수/실현손익/평가금액 추이, 양도소득세 단순 추정)
 ├─ holdings.html         실시간 보유현황 (Firestore 실시간 구독, 목표비중 대비 현재 비교,
 │                        코인은 브라우저에서 직접 시세 조회)
-├─ journal.html          전체 거래 일지 (검색/수정/삭제)
+├─ journal.html          전체 거래 일지 (검색/수정/삭제, 수정 시 시장=해외면 달러 단가 x
+│                        거래일 환율(frankfurter, ECB 고시)로 원화 단가/금액 재계산)
 ├─ add-transaction.html  매수/매도 입력 폼 (실현손익 자동계산, 보유수량 초과 매도 경고,
 │                        시장=해외 선택 시 달러 단가 입력 → 실시간 환율로 원화 단가 자동계산)
 ├─ stock-detail.html     종목 상세 (?code=로 진입 - 매매 이력 + 월별 손익률 추이)
