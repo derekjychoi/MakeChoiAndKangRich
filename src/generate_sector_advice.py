@@ -17,6 +17,9 @@ from asset_classify import classify_asset_class
 from firestore_client import get_db
 
 CLAUDE_TIMEOUT_SEC = 300
+# 목표 비중과의 차이가 이 폭(%p) 이내인 자산군은 "허용 범위"로 보고 리밸런싱을 제안하지
+# 않는다 - 시세 변동으로 생기는 작은 차이까지 맞추면 세금/수수료만 나가고 실익이 거의 없음.
+REBALANCE_BAND_PP = 5.0
 KST = timezone(timedelta(hours=9))
 
 
@@ -38,6 +41,32 @@ def _is_rebalance_month(month_str: str) -> bool:
     너무 잦은 매매를 유도하기 쉽다는 피드백을 반영."""
     month = int(month_str.split("-")[1])
     return month in (6, 12)
+
+
+def _current_allocation_pct(report: dict) -> dict[str, float]:
+    breakdown = report.get("asset_class_breakdown", {})
+    total_eval = report.get("total_eval_krw", 0) or 1
+    return {cls: d["eval_krw"] / total_eval * 100 for cls, d in breakdown.items()}
+
+
+def _filter_actions_within_band(
+    report: dict, target_allocation: dict, actions: list[dict]
+) -> tuple[list[dict], list[dict]]:
+    """프롬프트로도 지시하지만, 모델이 허용 범위(±REBALANCE_BAND_PP) 안의 자산군까지
+    매매를 제안했을 경우를 대비해 코드 레벨에서 한 번 더 걸러낸다.
+    자산군을 판별할 수 없는 제안(목록에 없는 이름 등)은 임의로 버리지 않고 남긴다."""
+    current = _current_allocation_pct(report)
+    class_by_name = {h["name"]: classify_asset_class(h) for h in report.get("holdings_snapshot", [])}
+    kept, dropped = [], []
+    for a in actions:
+        name = a.get("name", "") if isinstance(a, dict) else ""
+        cls = name if name in target_allocation else class_by_name.get(name)
+        target = target_allocation.get(cls) if cls else None
+        if isinstance(target, (int, float)) and abs(target - current.get(cls, 0.0)) <= REBALANCE_BAND_PP:
+            dropped.append(a)
+        else:
+            kept.append(a)
+    return kept, dropped
 
 
 def _breakdown_lines(report: dict) -> str:
@@ -97,6 +126,11 @@ def build_prompt(report: dict, prev_report: dict | None, include_rebalance: bool
    바로 다음 문장에서 짧게 밝혀라.
 5. **그다음 "리밸런싱 제안" 한 단락을 추가하라.** 목표 비중에 맞추려면 위 "보유 종목 상세"
    목록 중 구체적으로 어떤 종목을 매도/매수하면 되는지 1~3개 실행 가능한 제안을 제시하라.
+   - **허용 범위 규칙: 4번 목표 비중과 위 현재 비중의 차이가 ±{band:g}%p 이내인 자산군은
+     매매를 제안하지 마라** (예: 목표 40%, 현재 43%면 차이 +3%p라 그대로 둔다). 차이가
+     {band:g}%p를 넘는 자산군만 조정 대상이다. 제안할 때 해당 자산군의 "현재 → 목표" 비중을
+     같이 적어라. 모든 자산군이 범위 안이면 "모든 자산군이 목표 ±{band:g}%p 이내라 이번
+     반기는 리밸런싱이 필요 없음"이라고만 쓰고 제안은 하지 마라.
    - 반드시 위 목록에 실제로 있는 종목명만 사용하고, 목록에 없는 종목·티커를 지어내지 마라.
    - **국내 개별주식/ETF는 1주 단위로만 거래된다.** "약 100만원어치 매도"처럼 금액만
      제시하지 말고, 위에 적힌 보유수량/현재가를 근거로 "몇 주"인지 정수로 환산해서 제시하고
@@ -120,7 +154,9 @@ def build_prompt(report: dict, prev_report: dict | None, include_rebalance: bool
    target_allocation의 네 값은 반드시 4번에서 제시한 숫자와 일치해야 하고 합계가 100이어야
    한다. rebalancing_actions에 제안이 없으면 빈 배열 []. 이 JSON 부분은 위 6번의 글자수
    제한과 무관하게 필요한 만큼 써도 된다.
-9. 출력은 본문 + 구분선 + JSON, 이 세 부분 외에 서두 설명이나 후기를 절대 넣지 마라."""
+9. 출력은 본문 + 구분선 + JSON, 이 세 부분 외에 서두 설명이나 후기를 절대 넣지 마라.""".replace(
+            "{band:g}", f"{REBALANCE_BAND_PP:g}"
+        )
     else:
         rebalance_section = """4. 목표 비중 숫자나 "리밸런싱 제안" 단락, JSON 블록은 **이번 달에는 작성하지 마라.**
    리밸런싱 제안은 반기(6월/12월 결산)에만 제시하며, 이번 달은 방향성 코멘트까지만 작성한다.
@@ -201,6 +237,13 @@ def main() -> None:
         # 프롬프트에서 JSON을 쓰지 말라고 했지만, 혹시 모델이 지침을 어기고
         # 끼워 넣었을 경우를 대비해 비반기 달은 코드 레벨에서도 강제로 비운다.
         target_allocation, rebalancing_actions = {}, []
+    else:
+        rebalancing_actions, dropped = _filter_actions_within_band(report, target_allocation, rebalancing_actions)
+        if dropped:
+            print(
+                f"허용 범위(±{REBALANCE_BAND_PP:g}%p) 안 자산군 제안 {len(dropped)}건 제외: "
+                + ", ".join(f"{a.get('action', '')} {a.get('name', '')}" for a in dropped)
+            )
 
     doc_ref.set({
         "sector_allocation_advice": advice,
