@@ -2,27 +2,26 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>종목 상세</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<meta name="theme-color" content="#2a78d6" />
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F6F8" />
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0D10" />
 </head>
 <body>
 <div class="container">
-  <nav class="app-nav">
-    <a href="home.html">홈</a>
-    <a href="index.html">월간 리포트</a>
-    <a href="yearly.html">연간 리포트</a>
-    <a href="holdings.html">실시간 보유현황</a>
-    <a href="journal.html">거래 일지</a>
-    <a href="add-transaction.html">+ 거래 입력</a>
-    <a href="alerts.html">알림 로그</a>
-    <a href="goal.html">목표</a>
-  </nav>
 
-  <h1 id="pageTitle">📄 종목 상세</h1>
+  <div class="title-row">
+    <a class="back-link" href="holdings.html" id="backLink" aria-label="뒤로"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></a>
+    <span class="month-sub" style="margin:0" id="pageSub"></span>
+  </div>
+  <h1 id="pageTitle" style="margin-top:0">종목 상세</h1>
+  <div class="hero" style="margin-top:0">
+    <span class="hero-value" id="priceValue" style="font-size:2rem"></span>
+    <span class="month-sub" id="priceSub" style="margin-left:6px"></span>
+  </div>
 
   <div id="signedOut" class="card">
     <p>구글 계정으로 로그인해주세요.</p>
@@ -30,24 +29,15 @@
   </div>
 
   <div id="contentArea" style="display:none;">
-    <div class="card">
-      <div class="stat-grid" id="statArea"></div>
-    </div>
+    <div class="stat-grid" id="statArea"></div>
 
     <div class="card">
-      <div class="chart-title">월별 평가손익률 추이</div>
+      <div class="card-title">월말 손익률 추이</div>
       <div id="trendArea"></div>
     </div>
 
-    <div class="card">
-      <h2>전체 매매 이력</h2>
-      <div style="overflow-x:auto;">
-        <table class="data-table">
-          <thead><tr><th>날짜</th><th>구분</th><th>단가</th><th>수량</th><th>금액</th><th>실현손익</th></tr></thead>
-          <tbody id="txRows"></tbody>
-        </table>
-      </div>
-    </div>
+    <div class="card-title" style="margin:16px 4px 8px">매매 이력</div>
+    <div class="list" id="txRows"></div>
   </div>
   <p id="status" class="month-sub"></p>
 </div>
@@ -68,7 +58,8 @@
     collection, query, where, getDocs, doc, getDoc,
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
-  import { formatKRW, formatPct, renderDivergingBars } from "./charts.js";
+  import { formatKRW, formatPct, escapeHtml, renderDivergingBars } from "./charts.js";
+  import { classifyAssetClass } from "./asset-classify.js";
   import { computeHoldings, applyPrices } from "./holdings-calc.js";
   import "./pwa-register.js";
 
@@ -100,7 +91,8 @@
         return;
       }
       const name = txs[0].name;
-      $("pageTitle").textContent = `📄 ${name} (${code})`;
+      $("pageTitle").textContent = name;
+      $("pageSub").textContent = `${classifyAssetClass(txs[0])} · ${code}`;
       document.title = `${name} - 종목 상세`;
 
       const priceDoc = await getDoc(doc(db, "latest_prices", code));
@@ -109,24 +101,30 @@
       const holding = holdings[0];
 
       if (holding) {
+        $("priceValue").textContent = Math.round(holding.current_price_krw).toLocaleString();
+        $("priceSub").textContent = holding.price_is_live ? "원 · 현재가" : "원 · 실시간 미지원(평단가 대체)";
+        const pnlCls = holding.profit_krw > 0 ? "good" : holding.profit_krw < 0 ? "bad" : "";
         $("statArea").innerHTML = `
-          <div class="stat-tile"><div class="stat-label">보유수량</div><div class="stat-value">${holding.quantity}</div></div>
-          <div class="stat-tile"><div class="stat-label">평균단가</div><div class="stat-value">${formatKRW(holding.avg_buy_price_krw)}</div></div>
-          <div class="stat-tile"><div class="stat-label">현재가</div><div class="stat-value">${formatKRW(holding.current_price_krw)}${holding.price_is_live ? "" : " (평단가 대체)"}</div></div>
-          <div class="stat-tile"><div class="stat-label">평가손익</div><div class="stat-value ${holding.profit_krw > 0 ? "good" : holding.profit_krw < 0 ? "bad" : ""}">${formatKRW(holding.profit_krw)} (${formatPct(holding.profit_pct)})</div></div>`;
+          <div class="stat-tile"><div class="stat-label">보유</div><div class="stat-value">${holding.quantity.toLocaleString()}</div></div>
+          <div class="stat-tile"><div class="stat-label">평균단가</div><div class="stat-value">${Math.round(holding.avg_buy_price_krw).toLocaleString()}</div></div>
+          <div class="stat-tile"><div class="stat-label">평가금액</div><div class="stat-value">${Math.round(holding.eval_total_krw).toLocaleString()}</div></div>
+          <div class="stat-tile"><div class="stat-label">평가손익</div><div class="stat-value ${pnlCls}">${formatPct(holding.profit_pct)}</div><div class="stat-sub">${formatKRW(holding.profit_krw)}</div></div>`;
       } else {
         $("statArea").innerHTML = `<p class="empty-note">현재 보유하고 있지 않은 종목입니다 (전량 매도됨).</p>`;
       }
 
       $("txRows").innerHTML = txs.map((t) => `
-        <tr>
-          <td>${t.date}</td>
-          <td>${t.type}</td>
-          <td>${Math.round(t.unit_price).toLocaleString()}원</td>
-          <td>${t.quantity}</td>
-          <td>${formatKRW(t.amount)}</td>
-          <td class="${t.realized_pnl > 0 ? "text-good" : t.realized_pnl < 0 ? "text-bad" : ""}">${t.realized_pnl ? formatKRW(t.realized_pnl) : "-"}</td>
-        </tr>
+        <div class="list-row">
+          <span class="badge ${t.type === "매수" ? "up" : "down"}">${escapeHtml(t.type)}</span>
+          <div class="list-main">
+            <div class="list-name num">${Math.abs(t.quantity).toLocaleString()} × ${Math.round(t.unit_price).toLocaleString()}</div>
+            <div class="list-sub">${escapeHtml([t.date, t.broker].filter(Boolean).join(" · "))}</div>
+          </div>
+          <div class="list-end">
+            <div class="list-value">${Math.abs(Math.round(t.amount)).toLocaleString()}</div>
+            ${t.realized_pnl ? `<div class="list-delta ${t.realized_pnl > 0 ? "text-good" : "text-bad"}">실현 ${formatKRW(t.realized_pnl)}</div>` : ""}
+          </div>
+        </div>
       `).join("");
 
       const reportsSnap = await getDocs(collection(db, "monthly_reports"));
@@ -146,6 +144,14 @@
     }
   }
 
+  // 뒤로: 앱 안에서 들어왔으면 그 페이지로 (보유현황/홈/일지 어디서든 열 수 있어서)
+  $("backLink").addEventListener("click", (e) => {
+    if (document.referrer && new URL(document.referrer).origin === location.origin) {
+      e.preventDefault();
+      history.back();
+    }
+  });
+
   onAuthStateChanged(auth, (user) => {
     if (!user) {
       localStorage.removeItem("iaAuthed");
@@ -159,5 +165,14 @@
     load();
   });
 </script>
+<nav class="tabbar" aria-label="주요 메뉴">
+  <div class="tabbar-inner">
+    <a href="home.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a href="holdings.html" class="active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>보유</a>
+    <a href="journal.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>일지</a>
+    <a href="index.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>리포트</a>
+    <a href="more.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>더보기</a>
+  </div>
+</nav>
 </body>
 </html>

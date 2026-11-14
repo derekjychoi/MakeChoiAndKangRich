@@ -2,27 +2,21 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>투자 목표</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<meta name="theme-color" content="#2a78d6" />
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F6F8" />
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0D10" />
 </head>
 <body>
 <div class="container">
-  <nav class="app-nav">
-    <a href="home.html">홈</a>
-    <a href="index.html">월간 리포트</a>
-    <a href="yearly.html">연간 리포트</a>
-    <a href="holdings.html">실시간 보유현황</a>
-    <a href="journal.html">거래 일지</a>
-    <a href="add-transaction.html">+ 거래 입력</a>
-    <a href="alerts.html">알림 로그</a>
-    <a href="goal.html" class="active">목표</a>
-  </nav>
 
-  <h1>🎯 투자 목표</h1>
+  <div class="title-row">
+    <a class="back-link" href="more.html" aria-label="더보기로"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></a>
+    <h1 style="margin:0; font-size:1.15rem">투자 목표</h1>
+  </div>
 
   <div id="signedOut" class="card">
     <p>구글 계정으로 로그인해주세요.</p>
@@ -30,29 +24,28 @@
   </div>
 
   <div id="contentArea" style="display:none;">
-    <div class="card">
+    <div class="card" style="margin-top:8px">
       <div id="progressArea"></div>
-      <button id="editGoalBtn" class="secondary" style="margin-top:8px;">목표 수정</button>
     </div>
+    <div id="calloutArea"></div>
 
-    <div id="editPanel" class="card" style="display:none;">
-      <h2>목표 설정</h2>
+    <div id="editPanel" class="card">
+      <div class="card-title">목표 설정</div>
       <div class="form-grid">
         <div class="field">
-          <label>목표 금액 (원)</label>
+          <label for="f-amount">목표 금액 (원)</label>
           <input type="number" id="f-amount" step="any" min="0" />
         </div>
         <div class="field">
-          <label>목표 날짜</label>
+          <label for="f-date">목표일</label>
           <input type="date" id="f-date" />
         </div>
       </div>
-      <button id="saveGoalBtn" style="margin-top:12px;">저장</button>
-      <button id="cancelGoalBtn" class="secondary" style="margin-top:12px;">취소</button>
+      <button id="saveGoalBtn" class="block" style="margin-top:14px;">목표 저장</button>
     </div>
 
     <div class="card">
-      <div class="chart-title">월말 총 평가금액 추이 (전체 기간)</div>
+      <div class="card-title">월말 평가금액 추이 <span style="font-size:0.7rem">단위 만원</span></div>
       <div id="trendArea"></div>
     </div>
   </div>
@@ -73,7 +66,7 @@
   import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
-  import { formatKRW, formatKRWWithPct, renderDivergingBars } from "./charts.js";
+  import { formatMan } from "./charts.js";
   import "./pwa-register.js";
 
   const $ = (id) => document.getElementById(id);
@@ -88,21 +81,49 @@
   let currentGoal = null;
   let latestEval = 0;
 
+  // 원형 진행률 + (목표일이 있으면) 남은 개월 수와 "수익 없이 적립만으로" 필요한 월 적립액
   function renderProgress() {
     const area = $("progressArea");
     if (!currentGoal || !currentGoal.target_amount_krw) {
-      area.innerHTML = `<p class="empty-note">아직 목표가 설정되지 않았습니다. "목표 수정"에서 설정해보세요.</p>`;
+      area.innerHTML = `<p class="empty-note">아직 목표가 없습니다. 아래에서 목표 금액과 날짜를 정해보세요.</p>`;
+      $("calloutArea").innerHTML = "";
       return;
     }
     const target = currentGoal.target_amount_krw;
     const pct = target ? Math.min(100, Math.max(0, (latestEval / target) * 100)) : 0;
-    const dateText = currentGoal.target_date ? ` · 목표일 ${currentGoal.target_date}` : "";
+    const r = 74;
+    const circ = 2 * Math.PI * r;
     area.innerHTML = `
-      <div class="stat-label">목표: ${formatKRW(target)}${dateText}</div>
-      <div class="meter-track">
-        <div class="meter-fill" style="width:${pct}%"></div>
-        <div class="meter-label">${formatKRW(latestEval)} / ${formatKRW(target)} (${pct.toFixed(1)}%)</div>
+      <div class="ring-wrap">
+        <svg width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="목표 달성률 ${pct.toFixed(1)}%">
+          <circle cx="90" cy="90" r="${r}" fill="none" stroke="var(--track)" stroke-width="14"/>
+          <circle cx="90" cy="90" r="${r}" fill="none" stroke="var(--accent)" stroke-width="14" stroke-linecap="round"
+            stroke-dasharray="${(circ * pct / 100).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90 90 90)"/>
+        </svg>
+        <div class="center"><div class="pct">${pct.toFixed(1)}%</div><div class="month-sub" style="margin:0">목표 ${formatMan(target)}</div></div>
+      </div>
+      <div class="stat-grid" style="margin:0; text-align:center">
+        <div><div class="stat-label">현재 (최근 월말)</div><div class="stat-value">${formatMan(latestEval)}</div></div>
+        <div><div class="stat-label">남은 금액</div><div class="stat-value">${formatMan(Math.max(0, target - latestEval))}</div></div>
       </div>`;
+
+    const remaining = Math.max(0, target - latestEval);
+    let callout = "";
+    if (currentGoal.target_date && remaining > 0) {
+      const now = new Date();
+      const [ty, tm] = currentGoal.target_date.split("-").map(Number);
+      const months = (ty - now.getFullYear()) * 12 + (tm - (now.getMonth() + 1)) + 1;
+      callout = months > 0
+        ? `목표일까지 <b>${months}개월</b> · 수익 없이 적립만으로 채우면 <b>월 약 ${formatMan(remaining / months)}원</b>`
+        : `목표일(${currentGoal.target_date})이 지났습니다. 목표를 다시 정해보세요.`;
+    } else if (remaining <= 0) {
+      callout = "목표 금액을 달성했습니다.";
+    }
+    $("calloutArea").innerHTML = callout ? `
+      <div class="callout">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+        <div>${callout}</div>
+      </div>` : "";
   }
 
   async function loadGoal() {
@@ -115,11 +136,6 @@
     renderProgress();
   }
 
-  $("editGoalBtn").addEventListener("click", () => {
-    $("editPanel").style.display = "block";
-    $("editPanel").scrollIntoView({ behavior: "smooth" });
-  });
-  $("cancelGoalBtn").addEventListener("click", () => { $("editPanel").style.display = "none"; });
 
   $("saveGoalBtn").addEventListener("click", async () => {
     const amount = parseFloat($("f-amount").value) || 0;
@@ -137,7 +153,6 @@
       });
       currentGoal = { target_amount_krw: amount, target_date: targetDate };
       renderProgress();
-      $("editPanel").style.display = "none";
       statusEl.textContent = "저장 완료";
     } catch (err) {
       statusEl.textContent = "저장 실패: " + err.message;
@@ -152,11 +167,17 @@
       return;
     }
     latestEval = reports[reports.length - 1].total_eval_krw || 0;
-    const evalItems = reports.map((r) => ({
-      label: `${r.month.slice(2, 4)}.${parseInt(r.month.split("-")[1], 10)}`,
-      value: r.total_eval_krw || 0, pct: r.overall_profit_pct || 0,
-    }));
-    $("trendArea").innerHTML = renderDivergingBars(evalItems, "평가금액", "-", formatKRWWithPct, false);
+    // 최근 12개월만 세로 막대로 (차이가 잘 보이도록 최솟값의 80%를 바닥으로)
+    const recent = reports.slice(-12);
+    const evals = recent.map((r) => r.total_eval_krw || 0);
+    const maxEval = Math.max(1, ...evals);
+    const floorEval = Math.min(...evals) * 0.8;
+    $("trendArea").innerHTML = `<div class="vbars">${recent.map((r, i) => `
+      <div class="vbar ${i === recent.length - 1 ? "last" : ""}">
+        <span class="v">${Math.round((r.total_eval_krw || 0) / 10000).toLocaleString()}</span>
+        <div class="b" style="height:${Math.round(((r.total_eval_krw || 0) - floorEval) / (maxEval - floorEval || 1) * 110) + 10}px"></div>
+        <span class="m">${parseInt(r.month.split("-")[1], 10)}월</span>
+      </div>`).join("")}</div>`;
   }
 
   onAuthStateChanged(auth, async (user) => {
@@ -175,5 +196,14 @@
     statusEl.textContent = "";
   });
 </script>
+<nav class="tabbar" aria-label="주요 메뉴">
+  <div class="tabbar-inner">
+    <a href="home.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a href="holdings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>보유</a>
+    <a href="journal.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>일지</a>
+    <a href="index.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>리포트</a>
+    <a href="more.html" class="active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>더보기</a>
+  </div>
+</nav>
 </body>
 </html>

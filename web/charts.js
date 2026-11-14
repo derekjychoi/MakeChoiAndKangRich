@@ -70,11 +70,62 @@ export function renderDivergingBars(items, posLegend, negLegend, valueFormatter,
 }
 
 export const ASSET_CLASS_ORDER = [
-  { key: "주식(개별)", colorVar: "--cat-1", textOnFill: "#ffffff" },
-  { key: "주식(ETF)", colorVar: "--cat-2", textOnFill: "#ffffff" },
-  { key: "금", colorVar: "--cat-3", textOnFill: "#ffffff" },
-  { key: "코인", colorVar: "--cat-4", textOnFill: "#0b0b0b" },
+  { key: "주식(ETF)", short: "ETF", colorVar: "--cat-1", textOnFill: "#ffffff" },
+  { key: "코인", short: "코인", colorVar: "--cat-2", textOnFill: "#ffffff" },
+  { key: "주식(개별)", short: "개별주", colorVar: "--cat-3", textOnFill: "#ffffff" },
+  { key: "금", short: "금", colorVar: "--cat-4", textOnFill: "#0b0b0b" },
 ];
+
+// 큰 금액을 "4,272만" / "1.2억" 처럼 줄여 보여준다 (카드처럼 좁은 칸용).
+export function formatMan(v) {
+  const sign = v < 0 ? "−" : "";
+  const man = Math.abs(v) / 10000;
+  if (man >= 10000) return `${sign}${parseFloat((man / 10000).toFixed(1))}억`;
+  return `${sign}${man >= 100 ? Math.round(man).toLocaleString() : man.toFixed(1)}만`;
+}
+
+// "▼ 9.9%" 같은 손익 배지. 한국식으로 상승=up(빨강), 하락=down(파랑).
+export function renderDelta(pct) {
+  const cls = pct > 0 ? "up" : pct < 0 ? "down" : "";
+  const arrow = pct > 0 ? "▲" : pct < 0 ? "▼" : "";
+  return `<span class="delta ${cls}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`;
+}
+
+export function signClass(v) {
+  return v > 0 ? "text-good" : v < 0 ? "text-bad" : "";
+}
+
+// breakdown: {자산군: {eval_krw, invested_krw}} -> 비중(%) 목록 (ASSET_CLASS_ORDER 순서, 0인 자산군 제외)
+export function allocationEntries(breakdown) {
+  const total = Object.values(breakdown).reduce((s, d) => s + (d.eval_krw || 0), 0);
+  return ASSET_CLASS_ORDER
+    .map((c) => ({ ...c, value: breakdown[c.key]?.eval_krw || 0 }))
+    .filter((c) => c.value > 0)
+    .map((c) => ({ ...c, pct: total ? (c.value / total) * 100 : 0 }));
+}
+
+// 자산 배분: 자산군마다 한 줄씩 가는 막대 (홈)
+export function renderAllocationRows(breakdown) {
+  const entries = allocationEntries(breakdown);
+  if (entries.length === 0) return `<p class="empty-note">데이터 없음</p>`;
+  return `<div class="alloc-rows">${entries.map((e) => `
+    <div class="alloc-row">
+      <span>${e.short}</span>
+      <div class="bar"><div style="width:${e.pct.toFixed(1)}%; background:var(${e.colorVar})"></div></div>
+      <span class="pct">${e.pct.toFixed(1)}%</span>
+    </div>`).join("")}</div>`;
+}
+
+// 자산 배분: 한 줄로 쌓은 막대 + 범례 (월간 리포트처럼 공간이 좁을 때)
+export function renderAllocationStack(breakdown) {
+  const entries = allocationEntries(breakdown);
+  if (entries.length === 0) return `<p class="empty-note">데이터 없음</p>`;
+  return `
+    <div class="alloc-stack">${entries.map((e) => `<div style="width:${e.pct.toFixed(1)}%; background:var(${e.colorVar})"></div>`).join("")}</div>
+    <div class="legend-grid">${entries.map((e) => `
+      <div><span class="dot" style="background:var(${e.colorVar})"></span><span style="flex:1">${e.short}</span><span class="num" style="font-weight:600">${e.pct.toFixed(1)}%</span></div>`).join("")}
+    </div>`;
+}
 
 function polarToCartesian(cx, cy, r, angleDeg) {
   const rad = (angleDeg * Math.PI) / 180;

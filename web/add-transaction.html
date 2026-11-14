@@ -2,34 +2,40 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>거래 입력</title>
 <link rel="stylesheet" href="style.css" />
+<style>
+  /* 저장 버튼은 화면 아래에 붙여 둔다 (긴 폼을 끝까지 스크롤하지 않아도 되게) */
+  .submit-bar {
+    position: sticky; bottom: 0; margin: 16px -16px 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: var(--bg); border-top: 1px solid var(--divider);
+  }
+  .amount-card .form-grid { grid-template-columns: 1fr; }
+</style>
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<meta name="theme-color" content="#2a78d6" />
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F6F8" />
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0D10" />
 </head>
-<body>
+<body class="no-tabbar">
 <div class="container">
-  <nav class="app-nav">
-    <a href="home.html">홈</a>
-    <a href="index.html">월간 리포트</a>
-    <a href="yearly.html">연간 리포트</a>
-    <a href="holdings.html">실시간 보유현황</a>
-    <a href="journal.html">거래 일지</a>
-    <a href="add-transaction.html" class="active">+ 거래 입력</a>
-    <a href="alerts.html">알림 로그</a>
-    <a href="goal.html">목표</a>
-  </nav>
 
-  <h1>➕ 매수/매도 입력</h1>
+  <div class="page-header" style="justify-content:flex-start">
+    <a class="back-link" href="home.html" id="closeLink" aria-label="닫기"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></a>
+    <h1 style="font-size:1.1rem">거래 입력</h1>
+  </div>
 
   <div id="signedOut" class="card">
     <p>구글 계정으로 로그인해주세요.</p>
     <button id="loginBtn">Google로 로그인</button>
   </div>
 
-  <div id="formArea" class="card" style="display:none;">
+  <div id="formArea" style="display:none;">
+    <div class="seg" id="typeSeg" role="group" aria-label="매수/매도" style="margin-bottom:14px">
+      <button type="button" data-value="매수" class="buy">매수</button>
+      <button type="button" data-value="매도" class="sell">매도</button>
+    </div>
     <div class="field full" style="margin-bottom:14px;">
       <label>기존 종목에서 불러오기 (선택)</label>
       <select id="existingPick">
@@ -42,7 +48,7 @@
         <label>날짜</label>
         <input type="date" id="f-date" />
       </div>
-      <div class="field">
+      <div class="field" style="display:none">
         <label>매수/매도</label>
         <select id="f-type">
           <option value="매수">매수</option>
@@ -58,8 +64,12 @@
         <input type="text" id="f-code" placeholder="예: 005930 / TQQQ / BTC" />
       </div>
       <div class="field">
-        <label>시장</label>
-        <select id="f-market">
+        <label id="marketLabel">시장</label>
+        <div class="seg" id="marketSeg" role="group" aria-labelledby="marketLabel" style="height:48px; align-items:stretch">
+          <button type="button" data-value="국내">국내</button>
+          <button type="button" data-value="해외">해외 $</button>
+        </div>
+        <select id="f-market" style="display:none">
           <option value="국내">국내</option>
           <option value="해외">해외</option>
         </select>
@@ -92,21 +102,21 @@
         <input type="number" id="f-qty" step="any" min="0" />
       </div>
       <div class="field">
-        <label>금액 (원, 자동계산 - 수정 가능)</label>
+        <label>금액 (원, 자동계산)</label>
         <input type="number" id="f-amount" step="any" min="0" />
       </div>
       <div class="field">
-        <label>실현손익 (원, 매도일 때만 - 자동계산, 수정 가능)</label>
+        <label>실현손익 (매도 시 자동)</label>
         <input type="number" id="f-realized" step="any" value="0" />
       </div>
     </div>
 
     <p id="fxRateInfo" class="month-sub" style="display:none;"></p>
     <p id="holdingInfo" class="month-sub" style="display:none;"></p>
-    <p id="sellWarning" class="text-bad" style="display:none; font-size:0.85rem;"></p>
+    <p id="sellWarning" class="text-warn" style="display:none; font-size:0.85rem;"></p>
 
-    <button id="submitBtn" style="margin-top:16px;">저장</button>
     <p id="status" style="margin-top:10px;"></p>
+    <div class="submit-bar"><button id="submitBtn" class="block buy">매수 기록하기</button></div>
   </div>
 </div>
 
@@ -194,7 +204,27 @@
     }
   }
 
+  // 매수/매도·국내/해외는 보이는 세그먼트 버튼으로 고르고, 값은 기존 select에 그대로 둔다
+  // (나머지 로직은 전부 select 값을 읽음). 코드에서 select 값을 바꾼 뒤에도 버튼 표시가 맞도록
+  // syncMarketFields/syncSellHelpers 시작 때마다 다시 그린다.
+  function syncSegUI() {
+    const type = $("f-type").value;
+    document.querySelectorAll("#typeSeg button").forEach((b) => b.classList.toggle("active", b.dataset.value === type));
+    document.querySelectorAll("#marketSeg button").forEach((b) => b.classList.toggle("active", b.dataset.value === $("f-market").value));
+    $("submitBtn").textContent = `${type} 기록하기`;
+    $("submitBtn").className = `block ${type === "매도" ? "sell" : "buy"}`;
+  }
+  function bindSeg(segId, selectId) {
+    document.querySelectorAll(`#${segId} button`).forEach((b) => {
+      b.addEventListener("click", () => {
+        $(selectId).value = b.dataset.value;
+        $(selectId).dispatchEvent(new Event("change"));
+      });
+    });
+  }
+
   function syncMarketFields() {
+    syncSegUI();
     const isOverseas = $("f-market").value === "해외";
     $("f-price-usd-field").style.display = isOverseas ? "block" : "none";
     if (!isOverseas) {
@@ -303,6 +333,7 @@
   }
 
   function syncSellHelpers() {
+    syncSegUI();
     recalcAmount();
 
     const isSell = $("f-type").value === "매도";
@@ -347,6 +378,15 @@
     }
   }
   $("f-type").addEventListener("change", syncSellHelpers);
+  bindSeg("typeSeg", "f-type");
+  bindSeg("marketSeg", "f-market");
+  // 닫기: 다른 페이지에서 + 버튼으로 들어왔으면 그 페이지로 돌아간다
+  $("closeLink").addEventListener("click", (e) => {
+    if (document.referrer && new URL(document.referrer).origin === location.origin) {
+      e.preventDefault();
+      history.back();
+    }
+  });
   $("f-code").addEventListener("input", syncSellHelpers);
   $("f-price").addEventListener("input", syncSellHelpers);
   $("f-qty").addEventListener("input", syncSellHelpers);

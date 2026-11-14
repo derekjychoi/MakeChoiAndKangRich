@@ -66,8 +66,15 @@ README에 있고 아래에서 그대로 불러온다. 이 파일엔 README에 �
 ## 웹앱 (`web/`) 작성 규칙
 
 - 빌드 도구 없는 정적 HTML + ES module. Firebase SDK는 gstatic CDN `10.12.2`를 import한다.
-- 새 페이지를 만들면 기존 페이지처럼 `app-nav` 메뉴, `iaAuthed` 로그인 깜빡임 방지 스크립트,
-  `pwa-register.js` import를 넣는다.
+- 새 페이지를 만들면 기존 페이지처럼 `iaAuthed` 로그인 깜빡임 방지 스크립트, `pwa-register.js` import,
+  `</body>` 앞 하단 탭바(`<nav class="tabbar">`, 다른 페이지에서 복사해 해당 탭에 `class="active"`)를 넣는다.
+  탭은 홈/보유/일지/리포트/더보기 5개로 고정 - 새 화면은 이 중 하나의 하위로 넣고(뒤로가기 `.back-link`),
+  상단 메뉴를 다시 만들지 않는다. 거래 입력처럼 집중이 필요한 화면은 `body.no-tabbar`.
+- 색은 `style.css`의 토큰만 쓴다 (`--up`/`--down` 손익, `--accent`, `--muted`, `--surface` 등) - 하드코딩한
+  색은 다크 모드에서 깨진다. 손익은 상승=`--up`(빨강), 하락=`--down`(파랑). `.text-good`/`.text-bad`,
+  `.stat-value.good/.bad`도 이 규칙을 따른다 (경고 문구는 `.text-warn`).
+- 공용 UI 조각: `.card`, `.list`/`.list-row`, `.badge.up/.down`, `.chips`/`.chip`, `.seg`, `.stat-grid`,
+  `.hero`, `.vbars`, `charts.js`의 `renderAllocationRows/Stack`, `renderDelta`, `formatMan`.
 - 사용자 입력/DB 문자열을 HTML에 넣을 땐 `escapeHtml`(`charts.js`)을 쓴다.
 - 모바일(iPhone Safari)에서 주로 쓴다:
   - `type=date` 입력은 `style.css`의 `appearance:none` 처리에 기대고 있다 - 패딩으로 땜질하지 말 것.
