@@ -14,7 +14,7 @@
 <div class="container">
 
   <div class="title-row">
-    <a class="back-link" href="more.html" aria-label="더보기로"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></a>
+    <a class="back-link" href="more.html" id="backLink" aria-label="뒤로"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></a>
     <h1 style="margin:0; font-size:1.15rem">급등락 알림</h1>
   </div>
 
@@ -123,6 +123,15 @@
       statusEl.textContent = "로드 실패: " + err.message;
     }
   }
+
+  // 뒤로: 앱 안에서 들어왔으면 들어온 화면으로 (홈 급등락 띠/목표 카드, 더보기 메뉴 등 여러 곳에서 열림).
+  // 주소로 바로 열었을 때만 더보기로 간다.
+  $("backLink").addEventListener("click", (e) => {
+    if (document.referrer && new URL(document.referrer).origin === location.origin) {
+      e.preventDefault();
+      history.back();
+    }
+  });
 
   onAuthStateChanged(auth, (user) => {
     if (!user) {
