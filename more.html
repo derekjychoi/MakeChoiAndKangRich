@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>더보기</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F6F8" />
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0D10" />
+</head>
+<body>
+<div class="container">
+  <div class="page-header"><h1>더보기</h1></div>
+
+  <div id="signedOut" class="card">
+    <p>구글 계정으로 로그인해주세요.</p>
+    <button id="loginBtn">Google로 로그인</button>
+  </div>
+
+  <div id="contentArea" style="display:none;">
+    <div class="list menu-list">
+      <a class="list-row" href="add-transaction.html"><span class="list-main list-name">거래 입력</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+      <a class="list-row" href="alerts.html"><span class="list-main list-name">급등락 알림 로그</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+      <a class="list-row" href="goal.html"><span class="list-main list-name">투자 목표</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+      <a class="list-row" href="yearly.html"><span class="list-main list-name">연간 리포트 · 예상 양도세</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+    </div>
+
+    <div class="card-title" style="margin:20px 4px 8px">계정</div>
+    <div class="card">
+      <p id="userInfo" style="margin:0 0 12px"></p>
+      <button id="logoutBtn" class="secondary">로그아웃</button>
+    </div>
+  </div>
+  <p id="status" class="month-sub"></p>
+</div>
+
+<script>
+  // 로그인 상태 깜빡임 방지 (다른 페이지와 동일)
+  if (localStorage.getItem("iaAuthed") === "1") {
+    document.getElementById("signedOut").style.display = "none";
+    document.getElementById("contentArea").style.display = "block";
+  }
+</script>
+<script type="module">
+  import { signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { auth, provider } from "./firebase-init.js";
+  import "./pwa-register.js";
+
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $("status");
+
+  $("loginBtn").addEventListener("click", () => {
+    signInWithPopup(auth, provider).catch((err) => { statusEl.textContent = "로그인 실패: " + err.message; });
+  });
+  $("logoutBtn").addEventListener("click", () => signOut(auth));
+
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      localStorage.removeItem("iaAuthed");
+      $("signedOut").style.display = "block";
+      $("contentArea").style.display = "none";
+      return;
+    }
+    localStorage.setItem("iaAuthed", "1");
+    $("signedOut").style.display = "none";
+    $("contentArea").style.display = "block";
+    $("userInfo").textContent = `${user.displayName || ""} (${user.email})`;
+  });
+</script>
+<nav class="tabbar" aria-label="주요 메뉴">
+  <div class="tabbar-inner">
+    <a href="home.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a href="holdings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>보유</a>
+    <a href="journal.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>일지</a>
+    <a href="index.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>리포트</a>
+    <a href="more.html" class="active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>더보기</a>
+  </div>
+</nav>
+</body>
+</html>

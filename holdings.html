@@ -2,17 +2,14 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>실시간 보유현황</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<meta name="theme-color" content="#2a78d6" />
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F6F8" />
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0D10" />
 <style>
-  .live-dot {
-    display:inline-block; width:8px; height:8px; border-radius:50%;
-    background: var(--success-text); margin-right:6px;
-  }
   .stale-badge {
     font-size: 0.68rem; color: var(--text-muted); border: 1px solid var(--border);
     border-radius: 6px; padding: 1px 5px; margin-left: 6px;
@@ -21,18 +18,14 @@
 </head>
 <body>
 <div class="container">
-  <nav class="app-nav">
-    <a href="home.html">홈</a>
-    <a href="index.html">월간 리포트</a>
-    <a href="yearly.html">연간 리포트</a>
-    <a href="holdings.html" class="active">실시간 보유현황</a>
-    <a href="journal.html">거래 일지</a>
-    <a href="add-transaction.html">+ 거래 입력</a>
-    <a href="alerts.html">알림 로그</a>
-    <a href="goal.html">목표</a>
-  </nav>
 
-  <h1>📈 실시간 보유현황</h1>
+  <div class="page-header">
+    <div>
+      <h1>보유현황</h1>
+      <div class="sub"><span class="live-dot"></span><span id="lastUpdated">시세 불러오는 중...</span></div>
+    </div>
+    <a class="pill-btn" href="add-transaction.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>거래</a>
+  </div>
 
   <div id="signedOut" class="card">
     <p>구글 계정으로 로그인해주세요.</p>
@@ -40,58 +33,18 @@
   </div>
 
   <div id="contentArea" style="display:none;">
-    <p class="month-sub"><span class="live-dot"></span><span id="lastUpdated">시세 불러오는 중...</span></p>
-
-    <div class="card">
-      <div class="stat-grid">
-        <div class="stat-tile">
-          <div class="stat-label">총 평가금액</div>
-          <div class="stat-value" id="statEval">-</div>
-        </div>
-        <div class="stat-tile">
-          <div class="stat-label">총 투자원금</div>
-          <div class="stat-value" id="statInvested">-</div>
-        </div>
-        <div class="stat-tile">
-          <div class="stat-label">평가손익</div>
-          <div class="stat-value" id="statProfit">-</div>
-        </div>
-        <div class="stat-tile">
-          <div class="stat-label">보유 종목 수</div>
-          <div class="stat-value" id="statCount">-</div>
-        </div>
-      </div>
-
-      <div class="chart-block">
-        <div class="chart-title">자산군 배분</div>
-        <div id="pieArea"></div>
-      </div>
-
-      <div class="chart-block">
-        <div class="chart-title">종목별 평가손익률</div>
-        <div id="divbarArea"></div>
-      </div>
-
-      <div class="chart-block">
-        <div class="chart-title" id="targetChartTitle">목표 비중 대비 현재</div>
-        <div id="targetArea"></div>
-      </div>
+    <div class="hero">
+      <div class="hero-value" id="statEval" style="font-size:1.9rem">-</div>
+      <div class="hero-sub"><span id="statProfit"></span><span id="statInvested"></span></div>
     </div>
 
     <div class="card">
-      <h2>보유 종목 상세</h2>
-      <div style="overflow-x:auto;">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>종목</th><th>수량</th><th>평균단가</th><th>현재가</th>
-              <th>평가금액</th><th>평가손익</th><th>수익률</th>
-            </tr>
-          </thead>
-          <tbody id="holdingsRows"></tbody>
-        </table>
-      </div>
+      <div class="card-title"><span id="targetChartTitle">목표 비중 대비</span><span id="targetChartSub" style="font-size:0.7rem"></span></div>
+      <div id="targetArea"></div>
     </div>
+
+    <div class="card-title" style="margin:16px 4px 8px"><span>보유 종목 <span id="statCount"></span></span></div>
+    <div class="list" id="holdingsRows"></div>
     <p id="status" class="month-sub"></p>
   </div>
 </div>
@@ -111,7 +64,7 @@
   import { collection, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
   import "./pwa-register.js";
-  import { formatKRW, formatPct, formatMonth, escapeHtml, renderDivergingBars, renderPieChart } from "./charts.js";
+  import { formatKRW, formatPct, escapeHtml, renderDelta, signClass, renderAllocationRows, ASSET_CLASS_ORDER } from "./charts.js";
   import { computeHoldings, applyPrices } from "./holdings-calc.js";
   import { classifyAssetClass } from "./asset-classify.js";
 
@@ -157,11 +110,10 @@
     const totalProfit = totalEval - totalInvested;
     const overallPct = totalInvested ? (totalProfit / totalInvested) * 100 : 0;
 
-    $("statEval").textContent = formatKRW(totalEval);
-    $("statInvested").textContent = formatKRW(totalInvested);
-    $("statProfit").textContent = `${formatKRW(totalProfit)} (${overallPct > 0 ? "+" : ""}${overallPct.toFixed(1)}%)`;
-    $("statProfit").className = "stat-value " + (totalProfit > 0 ? "good" : totalProfit < 0 ? "bad" : "");
-    $("statCount").textContent = `${holdings.length}개`;
+    $("statEval").textContent = "₩" + Math.round(totalEval).toLocaleString();
+    $("statProfit").innerHTML = `${renderDelta(overallPct)} 평가손익 ${formatKRW(totalProfit)}`;
+    $("statInvested").textContent = `· 원금 ${formatKRW(totalInvested)}`;
+    $("statCount").textContent = `${holdings.length}`;
 
     const breakdown = {};
     holdings.forEach((h) => {
@@ -170,39 +122,50 @@
       breakdown[cls].eval_krw += h.eval_total_krw;
       breakdown[cls].invested_krw += h.total_buy_krw;
     });
-    $("pieArea").innerHTML = renderPieChart(breakdown);
-
-    $("divbarArea").innerHTML = renderDivergingBars(
-      holdings.map((h) => ({ label: h.name, value: h.profit_pct })),
-      "이익", "손실", (v) => formatPct(v, false)
-    );
 
     if (targetAllocation) {
-      $("targetChartTitle").textContent = `목표 비중 대비 현재 (${formatMonth(targetMonth)} AI 의견 기준)`;
-      const deltaItems = Object.entries(targetAllocation).map(([cls, targetPct]) => {
-        const currentPct = totalEval ? ((breakdown[cls]?.eval_krw || 0) / totalEval) * 100 : 0;
-        return { label: cls, value: currentPct - targetPct };
-      });
-      $("targetArea").innerHTML = renderDivergingBars(
-        deltaItems, "목표보다 초과", "목표보다 부족",
-        (v) => `${v.toFixed(1)}%p`
-      );
+      // 목표와 ±5%p 넘게 벌어진 자산군은 경고색 - 리밸런싱 제안 기준(REBALANCE_BAND_PP)과 같은 폭.
+      $("targetChartTitle").textContent = "목표 비중 대비";
+      $("targetChartSub").textContent = `${targetMonth} 목표 · ±5%p 기준`;
+      $("targetArea").innerHTML = ASSET_CLASS_ORDER
+        .filter((c) => targetAllocation[c.key] !== undefined || breakdown[c.key])
+        .map((c) => {
+          const target = targetAllocation[c.key] || 0;
+          const current = totalEval ? ((breakdown[c.key]?.eval_krw || 0) / totalEval) * 100 : 0;
+          const diff = current - target;
+          return `
+            <div class="cmp-row">
+              <div class="cmp-top">
+                <span class="dot" style="background:var(${c.colorVar})"></span>
+                <span class="label">${c.key}</span>
+                <span class="num" style="font-weight:600">${current.toFixed(1)}%</span>
+                <span class="target">/ ${target}%</span>
+                <span class="diff ${Math.abs(diff) > 5 ? "over" : ""}">${diff > 0 ? "+" : diff < 0 ? "−" : ""}${Math.abs(diff).toFixed(1)}%p</span>
+              </div>
+              <div class="cmp-track">
+                <div class="fill" style="width:${Math.min(100, current)}%; background:var(${c.colorVar})"></div>
+                <div class="marker" style="left:${Math.min(100, target)}%"></div>
+              </div>
+            </div>`;
+        }).join("");
     } else {
-      $("targetChartTitle").textContent = "목표 비중 대비 현재";
-      $("targetArea").innerHTML = `<p class="empty-note">아직 AI가 제시한 목표 비중이 없습니다 (월간 리포트에서 자동 생성됨).</p>`;
+      $("targetChartTitle").textContent = "자산 배분";
+      $("targetChartSub").textContent = "목표 비중은 반기 리포트에서 생성";
+      $("targetArea").innerHTML = renderAllocationRows(breakdown);
     }
 
     $("holdingsRows").innerHTML = holdings.map((h) => `
-      <tr>
-        <td><a href="stock-detail.html?code=${encodeURIComponent(h.code)}">${escapeHtml(h.name)}</a>${h.price_is_live ? "" : '<span class="stale-badge">실시간 미지원</span>'}</td>
-        <td>${h.quantity}</td>
-        <td>${Math.round(h.avg_buy_price_krw).toLocaleString()}원</td>
-        <td>${Math.round(h.current_price_krw).toLocaleString()}원</td>
-        <td>${formatKRW(h.eval_total_krw)}</td>
-        <td class="${h.profit_krw > 0 ? "text-good" : h.profit_krw < 0 ? "text-bad" : ""}">${formatKRW(h.profit_krw)}</td>
-        <td class="${h.profit_pct > 0 ? "text-good" : h.profit_pct < 0 ? "text-bad" : ""}">${formatPct(h.profit_pct)}</td>
-      </tr>
-    `).join("");
+      <a class="list-row" href="stock-detail.html?code=${encodeURIComponent(h.code)}">
+        <div class="list-main">
+          <div class="list-name">${escapeHtml(h.name)}${h.price_is_live ? "" : '<span class="stale-badge">실시간 미지원</span>'}</div>
+          <div class="list-sub">${escapeHtml(classifyAssetClass(h))} · ${h.quantity.toLocaleString()} × 평단 ${Math.round(h.avg_buy_price_krw).toLocaleString()}</div>
+        </div>
+        <div class="list-end">
+          <div class="list-value">${Math.round(h.eval_total_krw).toLocaleString()}</div>
+          <div class="list-delta ${signClass(h.profit_pct)}">${formatPct(h.profit_pct)} · ${formatKRW(h.profit_krw)}</div>
+        </div>
+      </a>
+    `).join("") || `<p class="empty-note" style="padding:12px 0">보유 종목 없음</p>`;
 
     if (priceUpdatedAt) {
       $("lastUpdated").textContent = `마지막 시세 갱신: ${priceUpdatedAt.toLocaleTimeString("ko-KR")}`;
@@ -247,5 +210,14 @@
     startListening();
   });
 </script>
+<nav class="tabbar" aria-label="주요 메뉴">
+  <div class="tabbar-inner">
+    <a href="home.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a href="holdings.html" class="active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>보유</a>
+    <a href="journal.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>일지</a>
+    <a href="index.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>리포트</a>
+    <a href="more.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>더보기</a>
+  </div>
+</nav>
 </body>
 </html>

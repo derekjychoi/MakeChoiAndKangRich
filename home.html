@@ -2,27 +2,20 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>홈</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<meta name="theme-color" content="#2a78d6" />
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F6F8" />
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0D10" />
 </head>
 <body>
 <div class="container">
-  <nav class="app-nav">
-    <a href="home.html" class="active">홈</a>
-    <a href="index.html">월간 리포트</a>
-    <a href="yearly.html">연간 리포트</a>
-    <a href="holdings.html">실시간 보유현황</a>
-    <a href="journal.html">거래 일지</a>
-    <a href="add-transaction.html">+ 거래 입력</a>
-    <a href="alerts.html">알림 로그</a>
-    <a href="goal.html">목표</a>
-  </nav>
-
-  <h1>🏠 홈</h1>
+  <div class="page-header">
+    <span class="hero-label">총 평가금액 · <span class="live-dot"></span>실시간</span>
+    <a class="pill-btn" href="add-transaction.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>거래</a>
+  </div>
 
   <div id="signedOut" class="card">
     <p>구글 계정으로 로그인해주세요.</p>
@@ -30,33 +23,34 @@
   </div>
 
   <div id="contentArea" style="display:none;">
-    <div class="card">
-      <div class="stat-grid">
-        <div class="stat-tile">
-          <div class="stat-label">총 평가금액</div>
-          <div class="stat-value" id="statEval">-</div>
-        </div>
-        <div class="stat-tile">
-          <div class="stat-label">평가손익</div>
-          <div class="stat-value" id="statProfit">-</div>
-        </div>
+    <div class="hero">
+      <div class="hero-value" id="statEval">-</div>
+      <div class="hero-sub" id="statProfit"></div>
+    </div>
+
+    <div class="stat-grid">
+      <a class="stat-tile" href="goal.html" style="text-decoration:none; color:inherit;" id="goalTile">
+        <div class="stat-label">목표 달성률</div>
+        <div class="stat-value">-</div>
+      </a>
+      <div class="stat-tile">
+        <div class="stat-label">투자원금</div>
+        <div class="stat-value" id="statInvested">-</div>
+        <div class="stat-sub" id="statGoalDate"></div>
       </div>
     </div>
 
     <div class="card">
-      <div class="chart-title">🎯 목표 진행률</div>
-      <div id="goalArea"></div>
+      <div class="card-title">자산 배분</div>
+      <div id="allocArea"></div>
     </div>
 
-    <div class="card">
-      <div class="chart-title">자산군 배분</div>
-      <div id="pieArea"></div>
+    <div class="card" style="padding-bottom:4px;">
+      <div class="card-title">보유 상위 <a href="holdings.html" id="holdingCountLink">전체 보기</a></div>
+      <div id="topArea"></div>
     </div>
 
-    <div class="card">
-      <div class="chart-title">⚡️ 최근 급등락 알림</div>
-      <div id="alertArea"></div>
-    </div>
+    <div id="alertArea"></div>
   </div>
   <p id="status" class="month-sub"></p>
 </div>
@@ -77,7 +71,7 @@
     collection, query, orderBy, limit, getDocs, doc, getDoc,
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
-  import { formatKRW, escapeHtml, renderPieChart } from "./charts.js";
+  import { formatKRW, formatMan, formatPct, escapeHtml, renderDelta, signClass, renderAllocationRows } from "./charts.js";
   import { computeHoldings, applyPrices } from "./holdings-calc.js";
   import { classifyAssetClass } from "./asset-classify.js";
   import "./pwa-register.js";
@@ -106,9 +100,9 @@
     const totalProfit = totalEval - totalInvested;
     const overallPct = totalInvested ? (totalProfit / totalInvested) * 100 : 0;
 
-    $("statEval").textContent = formatKRW(totalEval);
-    $("statProfit").textContent = `${formatKRW(totalProfit)} (${overallPct > 0 ? "+" : ""}${overallPct.toFixed(1)}%)`;
-    $("statProfit").className = "stat-value " + (totalProfit > 0 ? "good" : totalProfit < 0 ? "bad" : "");
+    $("statEval").textContent = "₩" + Math.round(totalEval).toLocaleString();
+    $("statProfit").innerHTML = `${renderDelta(overallPct)}<span>평가손익 ${formatKRW(totalProfit)}</span>`;
+    $("statInvested").textContent = formatMan(totalInvested);
 
     const breakdown = {};
     holdings.forEach((h) => {
@@ -117,7 +111,16 @@
       breakdown[cls].eval_krw += h.eval_total_krw;
       breakdown[cls].invested_krw += h.total_buy_krw;
     });
-    $("pieArea").innerHTML = renderPieChart(breakdown);
+    $("allocArea").innerHTML = renderAllocationRows(breakdown);
+
+    const top = [...holdings].sort((a, b) => b.eval_total_krw - a.eval_total_krw).slice(0, 4);
+    $("holdingCountLink").textContent = `전체 ${holdings.length}종목`;
+    $("topArea").innerHTML = top.map((h) => `
+      <a class="list-row" href="stock-detail.html?code=${encodeURIComponent(h.code)}">
+        <div class="list-main"><div class="list-name">${escapeHtml(h.name)}</div></div>
+        <span class="list-sub" style="margin:0">${formatMan(h.eval_total_krw)}</span>
+        <span class="list-value ${signClass(h.profit_pct)}" style="width:64px; text-align:right">${formatPct(h.profit_pct)}</span>
+      </a>`).join("") || `<p class="empty-note">보유 종목 없음</p>`;
 
     return totalEval;
   }
@@ -125,32 +128,36 @@
   async function loadGoal(latestEval) {
     const snap = await getDoc(doc(db, "settings", "investment_goal"));
     if (!snap.exists() || !snap.data().target_amount_krw) {
-      $("goalArea").innerHTML = `<p class="empty-note">아직 목표가 없습니다. <a href="goal.html">목표 설정하러 가기</a></p>`;
+      $("goalTile").innerHTML = `<div class="stat-label">목표 달성률</div><div class="stat-sub">목표 설정하기 →</div>`;
       return;
     }
     const goal = snap.data();
     const pct = Math.min(100, Math.max(0, (latestEval / goal.target_amount_krw) * 100));
-    $("goalArea").innerHTML = `
-      <div class="meter-track">
-        <div class="meter-fill" style="width:${pct}%"></div>
-        <div class="meter-label">${formatKRW(latestEval)} / ${formatKRW(goal.target_amount_krw)} (${pct.toFixed(1)}%)</div>
-      </div>`;
+    $("goalTile").innerHTML = `
+      <div class="stat-label">목표 ${formatMan(goal.target_amount_krw)} 달성률</div>
+      <div class="stat-value">${pct.toFixed(1)}%</div>
+      <div class="mini-track"><div style="width:${pct}%"></div></div>`;
+    if (goal.target_date) $("statGoalDate").textContent = `목표일 ${goal.target_date.replaceAll("-", ".")}`;
   }
 
+  // 최근 급등락 알림 1건을 띠로 보여준다 (전체 목록은 알림 로그 페이지).
   async function loadAlerts() {
-    const q = query(collection(db, "price_alerts"), orderBy("created_at", "desc"), limit(5));
+    const q = query(collection(db, "price_alerts"), orderBy("created_at", "desc"), limit(1));
     const snap = await getDocs(q);
     if (snap.empty) {
-      $("alertArea").innerHTML = `<p class="empty-note">최근 알림 없음</p>`;
+      $("alertArea").innerHTML = "";
       return;
     }
-    $("alertArea").innerHTML = snap.docs.map((d) => {
-      const a = d.data();
-      const ts = a.created_at?.toDate ? a.created_at.toDate() : null;
-      const isUp = a.direction === "급등";
-      return `<div class="month-sub">${ts ? ts.toLocaleString("ko-KR") : ""} · ${escapeHtml(a.name)}
-        <span class="${isUp ? "text-good" : "text-bad"}">${escapeHtml(a.direction)} ${a.change_pct > 0 ? "+" : ""}${a.change_pct.toFixed(1)}%</span></div>`;
-    }).join("") + `<p class="month-sub" style="margin-top:8px;"><a href="alerts.html">전체 알림 로그 보기 →</a></p>`;
+    const a = snap.docs[0].data();
+    const ts = a.created_at?.toDate ? a.created_at.toDate() : null;
+    const isUp = a.direction === "급등";
+    const icon = isUp ? "M3 17l6-6 4 4 8-8M14 7h7v7" : "M3 7l6 6 4-4 8 8M14 17h7v-7";
+    $("alertArea").innerHTML = `
+      <a class="banner ${isUp ? "up" : "down"}" href="alerts.html">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--${isUp ? "up" : "down"})" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${icon}"/></svg>
+        <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(a.name)} ${escapeHtml(a.direction)}${ts ? ` · ${ts.getMonth() + 1}/${ts.getDate()}` : ""}</span>
+        <span class="num ${isUp ? "text-good" : "text-bad"}" style="font-weight:700">${a.change_pct > 0 ? "+" : ""}${a.change_pct.toFixed(1)}%</span>
+      </a>`;
   }
 
   onAuthStateChanged(auth, async (user) => {
@@ -173,5 +180,14 @@
     }
   });
 </script>
+<nav class="tabbar" aria-label="주요 메뉴">
+  <div class="tabbar-inner">
+    <a href="home.html" class="active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a href="holdings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>보유</a>
+    <a href="journal.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>일지</a>
+    <a href="index.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>리포트</a>
+    <a href="more.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>더보기</a>
+  </div>
+</nav>
 </body>
 </html>

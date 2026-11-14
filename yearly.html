@@ -2,31 +2,25 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>연간 리포트</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<meta name="theme-color" content="#2a78d6" />
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F6F8" />
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0D10" />
 <style>
-  .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:16px; }
-  .toolbar select { width:auto; }
+  .year-row { display:flex; align-items:baseline; justify-content:space-between; margin: 14px 4px 10px; }
+  #yearPicker { width:auto; height:auto; padding:0; border:none; background:transparent; font-size:1.1rem; font-weight:700; }
 </style>
 </head>
 <body>
 <div class="container">
-  <nav class="app-nav">
-    <a href="home.html">홈</a>
-    <a href="index.html">월간 리포트</a>
-    <a href="yearly.html" class="active">연간 리포트</a>
-    <a href="holdings.html">실시간 보유현황</a>
-    <a href="journal.html">거래 일지</a>
-    <a href="add-transaction.html">+ 거래 입력</a>
-    <a href="alerts.html">알림 로그</a>
-    <a href="goal.html">목표</a>
-  </nav>
 
-  <h1>📅 연간 리포트</h1>
+  <div class="seg" style="margin-bottom:4px">
+    <a href="index.html">월간</a>
+    <a href="yearly.html" class="active" aria-current="page">연간</a>
+  </div>
 
   <div id="signedOut" class="card">
     <p>구글 계정으로 로그인해주세요.</p>
@@ -34,9 +28,9 @@
   </div>
 
   <div id="contentArea" style="display:none;">
-    <div class="toolbar">
-      <label style="margin:0;">연도:</label>
-      <select id="yearPicker"></select>
+    <div class="year-row">
+      <span><label for="yearPicker" class="sr-only">연도</label><select id="yearPicker"></select></span>
+      <span class="month-sub" id="yearSub" style="margin:0"></span>
     </div>
     <div id="yearBody"></div>
   </div>
@@ -58,7 +52,7 @@
   import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
   import "./pwa-register.js";
-  import { formatKRW, formatKRWWithPct, renderDivergingBars } from "./charts.js";
+  import { formatKRW, formatMan, renderDivergingBars } from "./charts.js";
   import { classifyPriceSource } from "./asset-classify.js";
 
   const TAX_DEDUCTION_KRW = 2_500_000;
@@ -125,9 +119,17 @@
     const realizedItems = reports.map((r) => ({
       label: monthLabel(r.month), value: r.realized_pnl_krw || 0,
     }));
-    const evalItems = reports.map((r) => ({
-      label: monthLabel(r.month), value: r.total_eval_krw || 0, pct: r.overall_profit_pct || 0,
-    }));
+    // 월말 평가금액 세로 막대: 차이가 잘 보이도록 최솟값의 80%를 바닥으로 잡는다.
+    const evals = reports.map((r) => r.total_eval_krw || 0);
+    const maxEval = Math.max(1, ...evals);
+    const floorEval = Math.min(...evals) * 0.8;
+    const evalBars = reports.map((r, i) => `
+      <div class="vbar ${i === reports.length - 1 ? "last" : ""}">
+        <span class="v">${Math.round((r.total_eval_krw || 0) / 10000).toLocaleString()}</span>
+        <div class="b" style="height:${Math.round(((r.total_eval_krw || 0) - floorEval) / (maxEval - floorEval || 1) * 110) + 10}px"></div>
+        <span class="m">${monthLabel(r.month)}</span>
+      </div>`).join("");
+    $("yearSub").textContent = `${monthLabel(reports[0].month)} ~ ${monthLabel(reports[reports.length - 1].month)} 결산 기준`;
 
     const tableRows = reports.map((r) => `
       <tr>
@@ -140,44 +142,36 @@
     `).join("");
 
     $("yearBody").innerHTML = `
-      <div class="card">
-        <div class="stat-grid">
-          <div class="stat-tile">
-            <div class="stat-label">연간 순매수</div>
-            <div class="stat-value">${formatKRW(netBuy)}</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-label">연간 실현손익</div>
-            <div class="stat-value ${totalRealized > 0 ? "good" : totalRealized < 0 ? "bad" : ""}">${formatKRW(totalRealized)}</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-label">총 거래 건수</div>
-            <div class="stat-value">${totalTrades}건</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-label">리포트 있는 월</div>
-            <div class="stat-value">${reports.length}개월</div>
-          </div>
+      <div class="stat-grid">
+        <div class="stat-tile">
+          <div class="stat-label">연간 실현손익</div>
+          <div class="stat-value ${totalRealized > 0 ? "good" : totalRealized < 0 ? "bad" : ""}">${totalRealized > 0 ? "+" : ""}${formatMan(totalRealized)}</div>
+          <div class="stat-sub">거래 ${totalTrades}건</div>
         </div>
-
-        <div class="chart-block">
-          <div class="chart-title">월별 순매수 추이</div>
-          ${renderDivergingBars(netBuyItems, "순매수", "순매도", formatKRW, false)}
-        </div>
-
-        <div class="chart-block">
-          <div class="chart-title">월별 실현손익 추이</div>
-          ${renderDivergingBars(realizedItems, "이익", "손실", formatKRW, false)}
-        </div>
-
-        <div class="chart-block">
-          <div class="chart-title">월말 총 평가금액 추이</div>
-          ${renderDivergingBars(evalItems, "평가금액", "-", formatKRWWithPct, false)}
+        <div class="stat-tile">
+          <div class="stat-label">연간 순매수</div>
+          <div class="stat-value">${netBuy > 0 ? "+" : ""}${formatMan(netBuy)}</div>
+          <div class="stat-sub">리포트 ${reports.length}개월</div>
         </div>
       </div>
 
       <div class="card">
-        <h2>💰 예상 양도소득세 (단순 추정)</h2>
+        <div class="card-title">월말 평가금액 <span style="font-size:0.7rem">단위 만원</span></div>
+        <div class="vbars">${evalBars}</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">월별 실현손익</div>
+        ${renderDivergingBars(realizedItems, "이익", "손실", formatKRW, false)}
+      </div>
+
+      <div class="card">
+        <div class="card-title">월별 순매수</div>
+        ${renderDivergingBars(netBuyItems, "순매수", "순매도", formatKRW, false)}
+      </div>
+
+      <div class="card">
+        <h2>예상 양도소득세 (단순 추정)</h2>
         <p class="month-sub">해외주식/코인 매도 실현손익 기준, 각 자산군별 연 2,500,000원 공제 후 22%(양도소득세+지방소득세) 적용한 단순 계산입니다. 국내 개별주식/ETF는 과세 방식이 달라 제외했습니다. 실제 신고 시 세무사 상담을 권장합니다.</p>
         ${(() => {
           const { rows, totalTax } = estimateTax(year);
@@ -244,5 +238,14 @@
     }
   });
 </script>
+<nav class="tabbar" aria-label="주요 메뉴">
+  <div class="tabbar-inner">
+    <a href="home.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a href="holdings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>보유</a>
+    <a href="journal.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>일지</a>
+    <a href="index.html" class="active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>리포트</a>
+    <a href="more.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>더보기</a>
+  </div>
+</nav>
 </body>
 </html>

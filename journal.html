@@ -2,37 +2,27 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>거래 일지</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<meta name="theme-color" content="#2a78d6" />
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F6F8" />
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0D10" />
 <style>
-  .toolbar { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
-  .toolbar input { flex:1; min-width:160px; }
-  .row-actions button { padding:4px 8px; font-size:0.75rem; margin-left:4px; }
   #editPanel { display:none; }
-  /* 좁은 화면에서 셀 글자가 한 글자씩 세로로 꺾여 보이는 걸 막는다 - 테이블이
-     내용물 폭만큼 넓어지게 하고, 넘치는 만큼은 래퍼 div가 가로 스크롤로 보여준다. */
-  #journalTable { width: max-content; min-width: 100%; }
-  #journalTable th, #journalTable td { white-space: nowrap; }
+  .edit-actions { display:flex; gap:8px; margin-top:14px; }
+  .edit-actions #saveEditBtn { flex:1; }
+  .usd-tag { font-size:0.7rem; color: var(--muted); }
 </style>
 </head>
 <body>
 <div class="container">
-  <nav class="app-nav">
-    <a href="home.html">홈</a>
-    <a href="index.html">월간 리포트</a>
-    <a href="yearly.html">연간 리포트</a>
-    <a href="holdings.html">실시간 보유현황</a>
-    <a href="journal.html" class="active">거래 일지</a>
-    <a href="add-transaction.html">+ 거래 입력</a>
-    <a href="alerts.html">알림 로그</a>
-    <a href="goal.html">목표</a>
-  </nav>
 
-  <h1>📒 전체 매수/매도 일지</h1>
+  <div class="page-header">
+    <div style="display:flex; align-items:baseline; gap:8px"><h1>거래 일지</h1><span class="sub" id="summaryLine"></span></div>
+    <a class="pill-btn" href="add-transaction.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>거래</a>
+  </div>
 
   <div id="signedOut" class="card">
     <p>구글 계정으로 로그인해주세요.</p>
@@ -60,33 +50,26 @@
         <div class="field"><label>실현손익 (원)</label><input type="number" id="e-realized" step="any" /></div>
       </div>
       <p id="e-fxInfo" class="month-sub" style="display:none;"></p>
-      <button id="saveEditBtn" style="margin-top:12px;">저장</button>
-      <button id="cancelEditBtn" class="secondary" style="margin-top:12px;">취소</button>
+      <div class="edit-actions">
+        <button id="saveEditBtn">저장</button>
+        <button id="cancelEditBtn" class="secondary">취소</button>
+        <button id="deleteEditBtn" class="danger">삭제</button>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="toolbar">
-        <input type="text" id="searchBox" placeholder="종목명으로 검색..." />
-        <select id="typeFilter">
-          <option value="">전체</option>
-          <option value="매수">매수만</option>
-          <option value="매도">매도만</option>
-        </select>
-      </div>
-      <p id="summaryLine" class="month-sub"></p>
-      <div style="overflow-x:auto;">
-        <table class="data-table" id="journalTable">
-          <thead>
-            <tr>
-              <th>날짜</th><th>구분</th><th>종목</th><th>증권사</th>
-              <th>단가</th><th>수량</th><th>금액</th><th>실현손익</th><th></th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </div>
-      <p id="status" style="margin-top:10px;"></p>
+    <div class="search-box" style="margin-bottom:10px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <label for="searchBox" class="sr-only">종목명 검색</label>
+      <input type="text" id="searchBox" placeholder="종목명으로 검색" />
     </div>
+    <div class="chips" id="typeFilter" role="group" aria-label="거래 구분 필터">
+      <button class="chip active" data-filter="">전체</button>
+      <button class="chip" data-filter="매수">매수</button>
+      <button class="chip" data-filter="매도">매도</button>
+      <button class="chip" data-filter="해외">해외</button>
+    </div>
+    <div id="rows"></div>
+    <p id="status" style="margin-top:10px;"></p>
   </div>
 </div>
 
@@ -121,43 +104,69 @@
 
   let allTx = []; // [{id, ...data}]
 
+  let typeFilter = "";
+  const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+  function dateLabel(iso) {
+    const [y, m, d] = iso.split("-").map(Number);
+    const wd = WEEKDAYS[new Date(y, m - 1, d).getDay()];
+    return `${y}년 ${m}월 ${d}일 (${wd})`;
+  }
+
   function render() {
     const q = $("searchBox").value.trim().toLowerCase();
-    const typeF = $("typeFilter").value;
     let list = allTx.filter((t) =>
-      (!q || t.name.toLowerCase().includes(q)) && (!typeF || t.type === typeF)
+      (!q || t.name.toLowerCase().includes(q)) &&
+      (!typeFilter || (typeFilter === "해외" ? t.market === "해외" : t.type === typeFilter))
     );
     list.sort((a, b) => (a.date < b.date ? 1 : -1));
 
     $("summaryLine").textContent = `총 ${list.length}건`;
 
-    $("rows").innerHTML = list.map((t) => `
-      <tr>
-        <td>${t.date}</td>
-        <td>${t.type}</td>
-        <td><a href="stock-detail.html?code=${encodeURIComponent(t.code)}">${escapeHtml(t.name)}</a></td>
-        <td>${escapeHtml(t.broker || "")}</td>
-        <td>${Math.round(t.unit_price).toLocaleString()}원${t.unit_price_usd ? ` <span class="month-sub">($${t.unit_price_usd.toLocaleString("en-US", { maximumFractionDigits: 4 })})</span>` : ""}</td>
-        <td>${t.quantity}</td>
-        <td>${formatKRW(t.amount)}</td>
-        <td class="${t.realized_pnl > 0 ? "text-good" : t.realized_pnl < 0 ? "text-bad" : ""}">${t.realized_pnl ? formatKRW(t.realized_pnl) : "-"}</td>
-        <td class="row-actions">
-          <button data-id="${t.id}" class="editBtn secondary">수정</button>
-          <button data-id="${t.id}" class="deleteBtn danger">삭제</button>
-        </td>
-      </tr>
-    `).join("");
-
-    document.querySelectorAll(".editBtn").forEach((btn) => {
-      btn.addEventListener("click", () => openEdit(btn.dataset.id));
+    // 날짜별로 묶어서 카드 목록으로 보여준다 (좁은 화면에서 표 가로 스크롤 대신).
+    const groups = [];
+    list.forEach((t) => {
+      const last = groups[groups.length - 1];
+      if (last && last.date === t.date) last.items.push(t);
+      else groups.push({ date: t.date, items: [t] });
     });
-    document.querySelectorAll(".deleteBtn").forEach((btn) => {
-      btn.addEventListener("click", () => removeTx(btn.dataset.id));
+
+    $("rows").innerHTML = groups.map((g) => `
+      <div class="group-label">${dateLabel(g.date)}</div>
+      <div class="list">
+        ${g.items.map((t) => {
+          const isBuy = t.type === "매수";
+          const usd = t.unit_price_usd ? ` <span class="usd-tag">($${t.unit_price_usd.toLocaleString("en-US", { maximumFractionDigits: 4 })})</span>` : "";
+          const sub = [t.broker, t.market === "해외" ? "해외" : "", `${Math.abs(t.quantity).toLocaleString()} × ${Math.round(t.unit_price).toLocaleString()}`]
+            .filter(Boolean).map(escapeHtml).join(" · ");
+          return `
+          <a class="list-row tx-row" href="#" data-id="${t.id}">
+            <span class="badge ${isBuy ? "up" : "down"}">${escapeHtml(t.type)}</span>
+            <div class="list-main">
+              <div class="list-name">${escapeHtml(t.name)}</div>
+              <div class="list-sub">${sub}${usd}</div>
+            </div>
+            <div class="list-end">
+              <div class="list-value">${Math.abs(Math.round(t.amount)).toLocaleString()}</div>
+              ${t.realized_pnl ? `<div class="list-delta ${t.realized_pnl > 0 ? "text-good" : "text-bad"}">실현 ${formatKRW(t.realized_pnl)}</div>` : ""}
+            </div>
+          </a>`;
+        }).join("")}
+      </div>`).join("") || `<p class="empty-note">거래 내역 없음</p>`;
+
+    document.querySelectorAll(".tx-row").forEach((row) => {
+      row.addEventListener("click", (e) => { e.preventDefault(); openEdit(row.dataset.id); });
     });
   }
 
   $("searchBox").addEventListener("input", render);
-  $("typeFilter").addEventListener("change", render);
+  document.querySelectorAll("#typeFilter .chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      typeFilter = chip.dataset.filter;
+      document.querySelectorAll("#typeFilter .chip").forEach((c) => c.classList.toggle("active", c === chip));
+      render();
+    });
+  });
 
   // 해외(USD) 거래는 달러 단가 x 환율로 원화 단가/금액을 다시 계산한다. 저장되는
   // unit_price/amount는 항상 원화(add-transaction.html과 동일 컨벤션). 과거 거래를
@@ -259,6 +268,7 @@
   }
 
   $("cancelEditBtn").addEventListener("click", () => { $("editPanel").style.display = "none"; });
+  $("deleteEditBtn").addEventListener("click", () => removeTx($("editPanel").dataset.editId));
 
   $("saveEditBtn").addEventListener("click", async () => {
     const id = $("editPanel").dataset.editId;
@@ -294,6 +304,7 @@
     statusEl.textContent = "삭제 중...";
     try {
       await deleteDoc(doc(db, "transactions", id));
+      $("editPanel").style.display = "none";
       statusEl.textContent = "삭제 완료";
       await loadAll();
     } catch (err) {
@@ -323,5 +334,14 @@
     await loadAll();
   });
 </script>
+<nav class="tabbar" aria-label="주요 메뉴">
+  <div class="tabbar-inner">
+    <a href="home.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a href="holdings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>보유</a>
+    <a href="journal.html" class="active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>일지</a>
+    <a href="index.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>리포트</a>
+    <a href="more.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>더보기</a>
+  </div>
+</nav>
 </body>
 </html>

@@ -2,62 +2,64 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>투자 월간 리포트</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>월간 리포트</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<meta name="theme-color" content="#2a78d6" />
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5F6F8" />
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0D10" />
 <style>
-  .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
-  .toolbar select { width:auto; }
-  .pager { display:flex; justify-content:center; gap:10px; align-items:center; margin: 18px 0; }
-  .pager button { padding:8px 14px; font-size:0.85rem; }
-  .pager span { font-size:0.85rem; color: var(--text-secondary); }
-  table.rebalance-table th, table.rebalance-table td { text-align:left; }
-  table.rebalance-table td:nth-child(3), table.rebalance-table th:nth-child(3) { text-align:right; }
-  .tag-sell { color: var(--critical-text); font-weight:600; }
-  .tag-buy { color: var(--success-text); font-weight:600; }
+  .month-nav { display:flex; align-items:center; justify-content:space-between; margin: 12px 0; }
+  .month-nav button {
+    width:44px; height:44px; padding:0; border-radius:22px; background:transparent; color: var(--text);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .month-nav button:disabled { color: var(--muted); opacity: 0.4; }
+  .month-title { text-align:center; min-width:0; }
+  /* 월 이름 자체가 월 선택 드롭다운 - 눌러서 원하는 달로 바로 이동 */
+  #monthPicker {
+    width:auto; height:auto; padding:0 4px; border:none; background:transparent;
+    font-size:1.1rem; font-weight:700; text-align:center; text-align-last:center;
+  }
+  .month-title .sub { font-size:0.7rem; color: var(--muted); }
+  .advice-summary {
+    background: var(--inset); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px;
+    font-family: var(--num-font); font-size: 0.78rem; line-height: 1.7; white-space: pre-wrap;
+  }
+  .advice-box.clamped { max-height: 11.5em; overflow: hidden; position: relative; }
+  .advice-box.clamped::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3em;
+    background: linear-gradient(transparent, var(--inset));
+  }
+  .advice-foot { display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:0.75rem; color: var(--muted); }
+  .advice-foot button { background:none; color: var(--accent); padding:0; font-size:0.8rem; }
 </style>
 </head>
 <body>
 <div class="container">
-  <nav class="app-nav">
-    <a href="home.html">홈</a>
-    <a href="index.html" class="active">월간 리포트</a>
-    <a href="yearly.html">연간 리포트</a>
-    <a href="holdings.html">실시간 보유현황</a>
-    <a href="journal.html">거래 일지</a>
-    <a href="add-transaction.html">+ 거래 입력</a>
-    <a href="alerts.html">알림 로그</a>
-    <a href="goal.html">목표</a>
-  </nav>
+  <div class="seg" style="margin-bottom:4px">
+    <a href="index.html" class="active" aria-current="page">월간</a>
+    <a href="yearly.html">연간</a>
+  </div>
 
-  <h1>📊 투자 월간 리포트</h1>
-
-  <div id="signedOut" class="card">
+  <div id="signedOut" class="card" style="margin-top:12px">
     <p>구글 계정으로 로그인해주세요.</p>
     <button id="loginBtn">Google로 로그인</button>
   </div>
 
-  <div id="signedIn" class="card" style="display:none;">
-    <p id="userInfo"></p>
-    <button id="logoutBtn" class="secondary" style="margin-top:8px;">로그아웃</button>
-  </div>
-
   <div id="contentArea" style="display:none;">
-    <div class="toolbar">
-      <label style="margin:0;">월 선택:</label>
-      <select id="monthPicker"></select>
+    <div class="month-nav">
+      <button id="prevMonthBtn" aria-label="이전 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+      <div class="month-title">
+        <label for="monthPicker" class="sr-only">월 선택</label>
+        <select id="monthPicker"></select>
+        <div class="sub" id="monthSub"></div>
+      </div>
+      <button id="nextMonthBtn" aria-label="다음 달"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
     </div>
 
     <div id="reports"></div>
-
-    <div id="pagerArea" class="pager" style="display:none;">
-      <button id="prevPageBtn" class="secondary">‹ 이전</button>
-      <span id="pageInfo"></span>
-      <button id="nextPageBtn" class="secondary">다음 ›</button>
-    </div>
   </div>
   <p id="status"></p>
 </div>
@@ -69,199 +71,168 @@
   // 금방 signedOut 화면으로 바로잡는다.
   if (localStorage.getItem("iaAuthed") === "1") {
     document.getElementById("signedOut").style.display = "none";
-    document.getElementById("signedIn").style.display = "block";
     document.getElementById("contentArea").style.display = "block";
   }
 </script>
 <script type="module">
-  import { signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import { auth, db, provider } from "./firebase-init.js";
   import "./pwa-register.js";
-  import { formatKRW, formatPct, formatMonth, escapeHtml, renderDivergingBars, renderPieChart } from "./charts.js";
+  import { formatKRW, formatPct, formatMonth, formatMan, escapeHtml, renderDivergingBars, renderAllocationStack } from "./charts.js";
 
   const $ = (id) => document.getElementById(id);
   const signedOutEl = $("signedOut");
-  const signedInEl = $("signedIn");
   const contentAreaEl = $("contentArea");
-  const userInfoEl = $("userInfo");
   const statusEl = $("status");
   const reportsEl = $("reports");
-  const pagerAreaEl = $("pagerArea");
 
-  const PAGE_SIZE = 3;
   let allReports = []; // 최신 -> 과거 순 정렬
-  let latestMonth = "";
-  let currentPage = 0;
+  let currentIndex = 0;
 
   $("loginBtn").addEventListener("click", () => {
     signInWithPopup(auth, provider).catch((err) => { statusEl.textContent = "로그인 실패: " + err.message; });
   });
-  $("logoutBtn").addEventListener("click", () => signOut(auth));
 
-  function renderRebalanceTable(actions) {
+  function renderRebalanceList(actions) {
     if (!actions || actions.length === 0) return "";
     return `
-      <table class="data-table rebalance-table" style="margin-top:10px;">
-        <thead><tr><th>구분</th><th>종목/자산</th><th>수량/금액</th><th>이유</th></tr></thead>
-        <tbody>
-          ${actions.map((a) => {
-            const qtyPart = a.quantity ? `${a.quantity}주` : "";
-            const amountPart = a.amount_krw ? formatKRW(a.amount_krw) : "";
-            const qtyAmount = [qtyPart, amountPart ? `(약 ${amountPart})` : ""].filter(Boolean).join(" ") || "-";
-            return `
-            <tr>
-              <td class="${a.action === "매도" ? "tag-sell" : "tag-buy"}">${escapeHtml(a.action || "")}</td>
-              <td>${escapeHtml(a.name || "")}</td>
-              <td>${qtyAmount}</td>
-              <td>${escapeHtml(a.reason || "")}</td>
-            </tr>
-          `;
-          }).join("")}
-        </tbody>
-      </table>`;
+      <div class="card-title" style="margin-top:14px">리밸런싱 제안</div>
+      ${actions.map((a) => {
+        const qtyPart = a.quantity ? `${a.quantity}주` : "";
+        const amountPart = a.amount_krw ? formatKRW(a.amount_krw) : "";
+        const qtyAmount = [qtyPart, amountPart ? `(약 ${amountPart})` : ""].filter(Boolean).join(" ") || "-";
+        return `
+          <div class="list-row" style="align-items:flex-start">
+            <span class="badge ${a.action === "매도" ? "down" : "up"}">${escapeHtml(a.action || "")}</span>
+            <div class="list-main">
+              <div class="list-name" style="white-space:normal">${escapeHtml(a.name || "")} <span class="num" style="font-weight:600">${escapeHtml(qtyAmount)}</span></div>
+              <div class="list-sub" style="font-size:0.75rem">${escapeHtml(a.reason || "")}</div>
+            </div>
+          </div>`;
+      }).join("")}`;
   }
 
-  function renderReportCard(report) {
-    const isLatest = report.month === latestMonth;
+  // 의견 본문 첫 두 줄이 📊/📈 고정 요약(generate_sector_advice.py)이면 따로 떼어 위에 보여준다.
+  function splitAdvice(text) {
+    const lines = text.split("\n");
+    const summary = [];
+    while (lines.length && /^[📊📈]/u.test(lines[0].trim())) summary.push(lines.shift().trim());
+    return { summary: summary.join("\n"), body: lines.join("\n").trim() };
+  }
+
+  function renderAdvice(report) {
+    if (!report.sector_allocation_advice) return "";
+    const { summary, body } = splitAdvice(report.sector_allocation_advice);
+    const isRebalanceMonth = Object.keys(report.target_allocation || {}).length > 0;
+    return `
+      <div class="card">
+        <div class="card-title" style="color:var(--text); font-weight:700; font-size:0.9rem">
+          <span style="display:flex; align-items:center; gap:8px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+            AI 자산배분 의견
+          </span>
+          <span style="font-size:0.7rem; color:var(--muted); font-weight:400">참고용</span>
+        </div>
+        ${summary ? `<div class="advice-summary">${escapeHtml(summary)}</div>` : ""}
+        <div class="advice-box clamped" id="adviceBody">${escapeHtml(body)}</div>
+        <div class="advice-foot">
+          <span>${isRebalanceMonth ? "반기 결산 리밸런싱 포함" : "리밸런싱 제안은 6·12월 결산에만"}</span>
+          <button type="button" id="adviceToggle">전문 보기</button>
+        </div>
+        ${renderRebalanceList(report.rebalancing_actions)}
+      </div>`;
+  }
+
+  function renderReport(report) {
     const netBuy = report.total_buy_krw - report.total_sell_krw;
     const sectorItems = Object.entries(report.net_flow_by_sector_krw || {})
       .map(([label, value]) => ({ label, value }));
     const holdingItems = (report.holdings_snapshot || [])
       .map((h) => ({ label: h.name, value: h.profit_pct }));
-
-    const sectorTable = sectorItems.length ? `
-      <details class="table-toggle">
-        <summary>표로 보기</summary>
-        <table class="data-table">
-          <thead><tr><th>섹터</th><th>순매수/순매도</th></tr></thead>
-          <tbody>
-            ${[...sectorItems].sort((a, b) => b.value - a.value).map((it) => `
-              <tr><td>${escapeHtml(it.label)}</td><td>${formatKRW(it.value)}</td></tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </details>` : "";
-
-    const holdingsBlock = `
-        <div class="chart-block">
-          <div class="chart-title">자산군 배분 (개별주식 / ETF / 금 / 코인) · ${formatMonth(report.month)} 말 기준</div>
-          ${renderPieChart(report.asset_class_breakdown || {})}
-        </div>
-
-        <div class="chart-block">
-          <div class="chart-title">보유 종목 평가손익률 · ${formatMonth(report.month)} 말 기준</div>
-          ${renderDivergingBars(holdingItems, "이익", "손실", (v) => formatPct(v, false))}
-          ${holdingItems.length ? `
-            <details class="table-toggle">
-              <summary>표로 보기</summary>
-              <table class="data-table">
-                <thead><tr><th>종목</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead>
-                <tbody>
-                  ${(report.holdings_snapshot || []).slice()
-                    .sort((a, b) => b.profit_pct - a.profit_pct)
-                    .map((h) => `
-                      <tr>
-                        <td>${escapeHtml(h.name)}</td>
-                        <td>${formatKRW(h.eval_total_krw)}</td>
-                        <td>${formatKRW(h.profit_krw)}</td>
-                        <td>${formatPct(h.profit_pct)}</td>
-                      </tr>
-                    `).join("")}
-                </tbody>
-              </table>
-            </details>` : ""}
-        </div>`;
-
-    const statTotalEvalTile = `
-          <div class="stat-tile">
-            <div class="stat-label">총 평가금액 (월말)</div>
-            <div class="stat-value ${report.overall_profit_pct > 0 ? "good" : report.overall_profit_pct < 0 ? "bad" : ""}">
-              ${formatKRW(report.total_eval_krw)}<span style="font-size:0.7em; margin-left:4px;">(${report.overall_profit_pct > 0 ? "+" : ""}${Math.round(report.overall_profit_pct)}%)</span>
-            </div>
-          </div>`;
+    const pctCls = (v) => (v > 0 ? "good" : v < 0 ? "bad" : "");
 
     return `
+      <div class="stat-grid">
+        <div class="stat-tile"><div class="stat-label">월말 평가금액</div><div class="stat-value">${formatMan(report.total_eval_krw)}</div></div>
+        <div class="stat-tile"><div class="stat-label">누적 수익률</div><div class="stat-value ${pctCls(report.overall_profit_pct)}">${formatPct(report.overall_profit_pct)}</div></div>
+        <div class="stat-tile"><div class="stat-label">순매수</div><div class="stat-value">${netBuy > 0 ? "+" : ""}${formatMan(netBuy)}</div></div>
+        <div class="stat-tile"><div class="stat-label">실현손익</div><div class="stat-value ${pctCls(report.realized_pnl_krw)}">${report.realized_pnl_krw > 0 ? "+" : ""}${formatMan(report.realized_pnl_krw)}</div></div>
+      </div>
+
       <div class="card">
-        <h2>${formatMonth(report.month)}${isLatest ? " (최신)" : ""}</h2>
-        <p class="month-sub">거래 ${report.trade_count}건 · 생성 ${new Date(report.generated_at).toLocaleString("ko-KR")}</p>
+        <div class="card-title">자산 배분 · ${formatMonth(report.month)} 말</div>
+        ${renderAllocationStack(report.asset_class_breakdown || {})}
+      </div>
 
-        <div class="stat-grid">
-          <div class="stat-tile">
-            <div class="stat-label">순매수</div>
-            <div class="stat-value">${formatKRW(netBuy)}</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-label">실현손익</div>
-            <div class="stat-value ${report.realized_pnl_krw > 0 ? "good" : report.realized_pnl_krw < 0 ? "bad" : ""}">${formatKRW(report.realized_pnl_krw)}</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-label">거래 건수</div>
-            <div class="stat-value">${report.trade_count}건</div>
-          </div>
-          ${statTotalEvalTile}
-        </div>
+      ${renderAdvice(report)}
 
-        ${holdingsBlock}
+      <div class="card">
+        <div class="card-title">보유 종목 평가손익률</div>
+        ${renderDivergingBars(holdingItems, "이익", "손실", (v) => formatPct(v, false))}
+        ${holdingItems.length ? `
+          <details class="table-toggle">
+            <summary>표로 보기</summary>
+            <table class="data-table">
+              <thead><tr><th>종목</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead>
+              <tbody>
+                ${(report.holdings_snapshot || []).slice()
+                  .sort((a, b) => b.profit_pct - a.profit_pct)
+                  .map((h) => `
+                    <tr>
+                      <td>${escapeHtml(h.name)}</td>
+                      <td>${formatKRW(h.eval_total_krw)}</td>
+                      <td>${formatKRW(h.profit_krw)}</td>
+                      <td>${formatPct(h.profit_pct)}</td>
+                    </tr>
+                  `).join("")}
+              </tbody>
+            </table>
+          </details>` : ""}
+      </div>
 
-        ${report.sector_allocation_advice ? `
-          <div class="chart-block">
-            <div class="chart-title">🧭 자산배분 의견 (AI 분석, 참고용)</div>
-            <div class="advice-box">${escapeHtml(report.sector_allocation_advice)}</div>
-            ${renderRebalanceTable(report.rebalancing_actions)}
-          </div>` : ""}
-
-        <div class="chart-block">
-          <div class="chart-title">섹터별 순매수 / 순매도</div>
-          ${renderDivergingBars(sectorItems, "순매수", "순매도", formatKRW)}
-          ${sectorTable}
-        </div>
+      <div class="card">
+        <div class="card-title">섹터별 순매수 / 순매도</div>
+        ${renderDivergingBars(sectorItems, "순매수", "순매도", formatKRW)}
       </div>`;
   }
 
-  function renderPaged() {
-    pagerAreaEl.style.display = allReports.length > PAGE_SIZE ? "flex" : "none";
-    const start = currentPage * PAGE_SIZE;
-    const pageItems = allReports.slice(start, start + PAGE_SIZE);
-    reportsEl.innerHTML = pageItems.map(renderReportCard).join("");
-    const totalPages = Math.max(1, Math.ceil(allReports.length / PAGE_SIZE));
-    $("pageInfo").textContent = `${currentPage + 1} / ${totalPages}`;
-    $("prevPageBtn").disabled = currentPage === 0;
-    $("nextPageBtn").disabled = currentPage >= totalPages - 1;
+  function showReport(index) {
+    currentIndex = Math.max(0, Math.min(allReports.length - 1, index));
+    const report = allReports[currentIndex];
+    $("monthPicker").value = report.month;
+    const generated = report.advice_generated_at || report.generated_at;
+    $("monthSub").textContent = `${generated ? new Date(generated).toLocaleDateString("ko-KR") + " 생성 · " : ""}거래 ${report.trade_count}건`;
+    // allReports는 최신 -> 과거 순이라 "이전 달"은 index + 1
+    $("prevMonthBtn").disabled = currentIndex >= allReports.length - 1;
+    $("nextMonthBtn").disabled = currentIndex === 0;
+    reportsEl.innerHTML = renderReport(report);
+
+    const toggle = $("adviceToggle");
+    if (toggle) {
+      toggle.addEventListener("click", () => {
+        const expanded = $("adviceBody").classList.toggle("clamped") === false;
+        toggle.textContent = expanded ? "접기" : "전문 보기";
+      });
+    }
   }
 
-  $("prevPageBtn").addEventListener("click", () => { currentPage = Math.max(0, currentPage - 1); renderPaged(); });
-  $("nextPageBtn").addEventListener("click", () => {
-    const totalPages = Math.max(1, Math.ceil(allReports.length / PAGE_SIZE));
-    currentPage = Math.min(totalPages - 1, currentPage + 1);
-    renderPaged();
-  });
-
+  $("prevMonthBtn").addEventListener("click", () => showReport(currentIndex + 1));
+  $("nextMonthBtn").addEventListener("click", () => showReport(currentIndex - 1));
   $("monthPicker").addEventListener("change", (e) => {
-    if (e.target.value === "") {
-      pagerAreaEl.style.display = allReports.length > PAGE_SIZE ? "flex" : "none";
-      currentPage = 0;
-      renderPaged();
-      return;
-    }
-    const report = allReports.find((r) => r.month === e.target.value);
-    pagerAreaEl.style.display = "none";
-    reportsEl.innerHTML = report ? renderReportCard(report) : "<p class=\"empty-note\">해당 월 리포트가 없습니다.</p>";
+    showReport(allReports.findIndex((r) => r.month === e.target.value));
   });
 
   onAuthStateChanged(auth, async (user) => {
     if (!user) {
       localStorage.removeItem("iaAuthed");
       signedOutEl.style.display = "block";
-      signedInEl.style.display = "none";
       contentAreaEl.style.display = "none";
       return;
     }
     localStorage.setItem("iaAuthed", "1");
     signedOutEl.style.display = "none";
-    signedInEl.style.display = "block";
     contentAreaEl.style.display = "block";
-    userInfoEl.textContent = `${user.displayName} (${user.email})`;
 
     statusEl.textContent = "리포트 불러오는 중...";
     try {
@@ -273,18 +244,22 @@
       }
       statusEl.textContent = "";
       allReports = snap.docs.map((d) => d.data()).sort((a, b) => (a.month < b.month ? 1 : -1));
-      latestMonth = allReports[0]?.month || "";
-
-      const picker = $("monthPicker");
-      picker.innerHTML = `<option value="">전체 보기 (페이지)</option>` +
-        allReports.map((r) => `<option value="${r.month}">${formatMonth(r.month)}</option>`).join("");
-
-      currentPage = 0;
-      renderPaged();
+      $("monthPicker").innerHTML = allReports
+        .map((r) => `<option value="${r.month}">${formatMonth(r.month)}</option>`).join("");
+      showReport(0);
     } catch (err) {
       statusEl.textContent = "리포트 로드 실패 (권한 문제일 수 있음): " + err.message;
     }
   });
 </script>
+<nav class="tabbar" aria-label="주요 메뉴">
+  <div class="tabbar-inner">
+    <a href="home.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+    <a href="holdings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>보유</a>
+    <a href="journal.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>일지</a>
+    <a href="index.html" class="active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>리포트</a>
+    <a href="more.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>더보기</a>
+  </div>
+</nav>
 </body>
 </html>
