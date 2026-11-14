@@ -58,6 +58,9 @@ README에 있고 아래에서 그대로 불러온다. 이 파일엔 README에 �
 - **Firestore 읽기 할당량**(무료 일 5만 건): 5분 주기 작업 등 자주 도는 코드에서
   `transactions` 전체를 스캔하지 말고 `settings/known_instruments` 캐시를 쓴다.
 - **날짜는 KST로 명시 계산**한다. GitHub Actions 러너는 UTC라 `date.today()`를 쓰면 월 경계가 밀린다.
+- 월말 시세는 KST 월말 자정 기준이다 (코인은 업비트 일봉이 KST 09:00 마감이라 자정 직전 1시간봉 종가를 씀).
+- `generate_monthly_report.py`는 `monthly_reports` 문서를 merge 없이 통째로 덮어쓴다 - 과거 리포트 숫자를
+  다시 계산하면 AI 의견/리밸런싱 필드가 지워지므로, 필요한 필드만 골라 merge로 갱신할 것.
 - 비밀값(`secrets/`)은 세션에서 `cat`하지 않는다 (대화 기록에 남음).
 
 ## 웹앱 (`web/`) 작성 규칙

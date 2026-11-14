@@ -63,10 +63,14 @@ def _naver_gold_close(code: str, as_of: date) -> float | None:
 
 
 def _upbit_krw_close(code: str, as_of: date) -> float | None:
+    """코인은 24시간 거래라 as_of 날짜가 끝나는 KST 자정 직전 가격을 종가로 쓴다.
+    일봉(candles/days)은 KST 09:00에 마감돼서, 월간 리포트가 도는 1일 08:00 KST엔 아직
+    안 끝난 봉의 "그 시점 가격"이 나왔다 (실행 시각마다 값이 달라짐). 그래서 KST 자정에
+    끝나는 1시간봉(23:00~24:00)의 종가를 쓴다."""
     try:
-        to_param = (as_of + timedelta(days=1)).strftime("%Y-%m-%d") + " 00:00:00"
+        to_param = (as_of + timedelta(days=1)).strftime("%Y-%m-%d") + "T00:00:00+09:00"
         r = requests.get(
-            "https://api.upbit.com/v1/candles/days",
+            "https://api.upbit.com/v1/candles/minutes/60",
             params={"market": f"KRW-{code.upper()}", "to": to_param, "count": 1},
             headers=HEADERS, timeout=8,
         )
